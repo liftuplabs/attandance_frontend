@@ -63,7 +63,7 @@ export const OfficeManager: React.FC<OfficeManagerProps> = ({
     setStatusMsg(null);
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/offices`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/offices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -107,7 +107,7 @@ export const OfficeManager: React.FC<OfficeManagerProps> = ({
     }
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/offices/${id}`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/offices/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,7 +137,7 @@ export const OfficeManager: React.FC<OfficeManagerProps> = ({
     }
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/offices/${office.id}`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/offices/${office.id}`, {
         method: 'DELETE',
       });
 

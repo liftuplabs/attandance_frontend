@@ -44,7 +44,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     setStatusMsg(null);
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/employees`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/employees`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,7 +91,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     }
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/employees/${id}`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,7 +122,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     }
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/employees/${emp.id}`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/employees/${emp.id}`, {
         method: 'DELETE',
       });
 
