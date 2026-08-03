@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Building2, Plus, MapPin, Compass, CheckCircle2, Edit2, Trash2, X, Save } from 'lucide-react';
 import { OfficeLocation } from '../types';
-import { BACKEND_API_URL } from '../lib/supabase';
+import { BACKEND_API_URL } from '../lib/api';
 
 interface OfficeManagerProps {
   offices: OfficeLocation[];

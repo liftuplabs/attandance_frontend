@@ -3,7 +3,7 @@ import { Shield, Search, FileSpreadsheet, CheckCircle2, AlertTriangle, LogIn, Lo
 import { UserProfile, OfficeLocation, AttendanceRecord } from '../types';
 import { OfficeManager } from './OfficeManager';
 import { EmployeeManager } from './EmployeeManager';
-import { BACKEND_API_URL } from '../lib/supabase';
+import { BACKEND_API_URL } from '../lib/api';
 
 interface AdminDashboardProps {
   user: UserProfile;

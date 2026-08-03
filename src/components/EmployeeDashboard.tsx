@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord, GeoCoordinates } from '../types';
 import { CameraCapture } from './CameraCapture';
-import { uploadSelfiePhoto, BACKEND_API_URL } from '../lib/supabase';
+import { uploadSelfiePhoto, BACKEND_API_URL } from '../lib/api';
 
 interface EmployeeDashboardProps {
   user: UserProfile;

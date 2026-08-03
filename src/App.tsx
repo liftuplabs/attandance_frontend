@@ -4,7 +4,7 @@ import { UserProfile, OfficeLocation, AttendanceRecord } from './types';
 import { AuthModal } from './components/AuthModal';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { BACKEND_API_URL } from './lib/supabase';
+import { BACKEND_API_URL } from './lib/api';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);

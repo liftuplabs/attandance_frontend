@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, LogOut, CheckCircle2, AlertTriangle, Eye, User, Clock } from 'lucide-react';
 import { AttendanceRecord } from '../types';
-import { getSignedPhotoUrl } from '../lib/supabase';
+import { getSignedPhotoUrl } from '../lib/api';
 
 interface AttendanceCardProps {
   record: AttendanceRecord;

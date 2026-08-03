@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { UserPlus, Users, Shield, CheckCircle2, Edit2, Trash2, X, Save, Lock } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
-import { BACKEND_API_URL } from '../lib/supabase';
+import { BACKEND_API_URL } from '../lib/api';
 
 interface EmployeeManagerProps {
   employees: UserProfile[];

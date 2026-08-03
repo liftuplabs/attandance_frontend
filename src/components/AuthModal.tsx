@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Phone, KeyRound, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw, Lock } from 'lucide-react';
-import { BACKEND_API_URL } from '../lib/supabase';
+import { BACKEND_API_URL } from '../lib/api';
 import { UserProfile } from '../types';
 
 type Step =
