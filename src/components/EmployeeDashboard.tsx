@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapPin,
   Compass,
@@ -10,10 +10,12 @@ import {
   History,
   Navigation,
   Sliders,
+  Image as ImageIcon,
+  X,
+  Clock,
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord, GeoCoordinates } from '../types';
 import { CameraCapture } from './CameraCapture';
-import { AttendanceCard } from './AttendanceCard';
 import { uploadSelfiePhoto, BACKEND_API_URL } from '../lib/supabase';
 
 interface EmployeeDashboardProps {
@@ -21,6 +23,14 @@ interface EmployeeDashboardProps {
   offices: OfficeLocation[];
   history: AttendanceRecord[];
   onAttendanceUpdated: () => void;
+}
+
+interface EmployeeSessionRow {
+  key: string;
+  checkIn: AttendanceRecord | null;
+  checkOut: AttendanceRecord | null;
+  dateStr: string;
+  durationText: string;
 }
 
 export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
@@ -46,6 +56,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     type: 'success' | 'warning' | 'error';
     text: string;
   } | null>(null);
+
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
 
   useEffect(() => {
     if (offices.length > 0 && !selectedOfficeId) {
@@ -105,7 +117,13 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     };
   }, [selectedOfficeId]);
 
-  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number, accuracy: number = 0) => {
+  const calculateDistance = (
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number,
+    accuracy: number = 0
+  ) => {
     const R = 6371000;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -204,9 +222,76 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     }
   };
 
+  // ── Pair employee records into structured session rows ────────────────────
+  const sessionRows = useMemo<EmployeeSessionRow[]>(() => {
+    const userRecs = history.filter((r) => r.user_id === user.id);
+    const sorted = [...userRecs].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
+    const rows: EmployeeSessionRow[] = [];
+    let i = 0;
+    while (i < sorted.length) {
+      const cur = sorted[i];
+      const next = sorted[i + 1];
+
+      let durationText = 'Active Session';
+      if (cur.check_type === 'in' && next?.check_type === 'out') {
+        const diffMs = new Date(next.created_at).getTime() - new Date(cur.created_at).getTime();
+        const mins = Math.floor(diffMs / (1000 * 60));
+        const hrs = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        durationText = hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins} mins`;
+      }
+
+      const dateObj = new Date(cur.created_at);
+      const dateStr = dateObj.toLocaleDateString('en-IN', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+
+      if (cur.check_type === 'in') {
+        const out = next?.check_type === 'out' ? next : null;
+        rows.push({
+          key: cur.id,
+          checkIn: cur,
+          checkOut: out,
+          dateStr,
+          durationText,
+        });
+        i += out ? 2 : 1;
+      } else {
+        rows.push({
+          key: cur.id,
+          checkIn: null,
+          checkOut: cur,
+          dateStr,
+          durationText: 'Single Punch Out',
+        });
+        i++;
+      }
+    }
+
+    return rows.sort((a, b) => {
+      const aT = new Date((a.checkIn || a.checkOut)!.created_at).getTime();
+      const bT = new Date((b.checkIn || b.checkOut)!.created_at).getTime();
+      return bT - aT;
+    });
+  }, [history, user.id]);
+
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    });
+
   return (
     <div className="space-y-4">
-      {/* Compact Geofence Radar Card */}
+      {/* Geofence Radar Card */}
       <div className="glass-panel p-4 rounded-2xl relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
@@ -234,7 +319,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
           </div>
         </div>
 
-        {/* Compact GPS Display Grid */}
+        {/* GPS Display Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           {/* Box 1 */}
           <div className="panel-inset p-3 rounded-xl flex flex-col justify-between">
@@ -297,7 +382,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
           </div>
         </div>
 
-        {/* GPS Testing Controls GATED STRICTLY TO DEV MODE */}
+        {/* GPS Testing Controls */}
         {import.meta.env.DEV && (
           <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <button
@@ -319,7 +404,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                       setSimLng(activeOffice.lng.toString());
                     }
                   }}
-                  className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 rounded text-[10px] font-medium"
+                  className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 rounded text-[10px] font-medium"
                 >
                   Set Inside (0m)
                 </button>
@@ -331,7 +416,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                       setSimLng((activeOffice.lng + 0.005).toString());
                     }
                   }}
-                  className="px-2 py-0.5 bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded text-[10px] font-medium"
+                  className="px-2 py-0.5 bg-rose-500/20 border border-rose-500/30 text-rose-700 rounded text-[10px] font-medium"
                 >
                   Set Out of Range (&gt;500m)
                 </button>
@@ -341,7 +426,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         )}
       </div>
 
-      {/* Selfie Verification Step & Action Controls */}
+      {/* Selfie Verification & Action Controls */}
       <div className="glass-panel p-4 rounded-2xl">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -450,28 +535,175 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         </div>
       </div>
 
-      {/* Attendance Log History Section */}
+      {/* ── Employee Structured Session History Table ── */}
       <div className="glass-panel p-4 rounded-2xl">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <History className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-bold text-slate-900">Your Recent Attendance Logs</h3>
+            <h3 className="text-sm font-bold text-slate-900">Daily Attendance & Session History</h3>
           </div>
-          <span className="text-xs text-slate-500 font-medium">{history.length} Total Records</span>
+          <span className="text-xs text-slate-500 font-medium">{sessionRows.length} Sessions Logged</span>
         </div>
 
-        {history.length === 0 ? (
-          <div className="text-center py-6 text-slate-500 text-xs italic">
-            No attendance records logged yet. Use the Punch In button above.
+        {sessionRows.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-xs italic">
+            No attendance sessions logged yet. Use the Punch In button above to start your first session.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {history.map((record) => (
-              <AttendanceCard key={record.id} record={record} />
-            ))}
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wider text-[10px]">
+                    Date & Work Duration
+                  </th>
+                  <th className="px-3 py-2.5 font-semibold text-emerald-600 uppercase tracking-wider text-[10px]">
+                    <span className="flex items-center gap-1">
+                      <LogIn className="w-3 h-3" /> Check-In
+                    </span>
+                  </th>
+                  <th className="px-3 py-2.5 font-semibold text-rose-500 uppercase tracking-wider text-[10px]">
+                    <span className="flex items-center gap-1">
+                      <LogOut className="w-3 h-3" /> Check-Out
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sessionRows.map((row) => (
+                  <tr key={row.key} className="hover:bg-slate-50 transition-colors">
+                    {/* Column 1: Date & Duration */}
+                    <td className="px-3 py-3 align-top">
+                      <p className="font-bold text-slate-900 text-xs">{row.dateStr}</p>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-md w-max font-semibold">
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        <span>{row.durationText}</span>
+                      </div>
+                    </td>
+
+                    {/* Column 2: Check-In Details */}
+                    <td className="px-3 py-3 align-top">
+                      {row.checkIn ? (
+                        <div className="flex items-start gap-2">
+                          <LogIn className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-slate-900">
+                              {formatTime(row.checkIn.created_at)}
+                            </p>
+                            <p className="text-[10px] text-slate-500">
+                              {(row.checkIn as any).office_name || 'Office'} • {row.checkIn.distance_meters}m
+                            </p>
+                            {row.checkIn.photo_url && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewPhoto({
+                                    url: row.checkIn!.photo_url!,
+                                    title: `Check-In Selfie (${row.dateStr})`,
+                                  })
+                                }
+                                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full transition-colors"
+                              >
+                                <ImageIcon className="w-3 h-3" /> View Photo
+                              </button>
+                            )}
+                          </div>
+                          {row.checkIn.photo_url && (
+                            <img
+                              src={row.checkIn.photo_url}
+                              alt="Check-in selfie"
+                              onClick={() =>
+                                setPreviewPhoto({
+                                  url: row.checkIn!.photo_url!,
+                                  title: `Check-In Selfie (${row.dateStr})`,
+                                })
+                              }
+                              className="w-9 h-9 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 italic text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* Column 3: Check-Out Details */}
+                    <td className="px-3 py-3 align-top">
+                      {row.checkOut ? (
+                        <div className="flex items-start gap-2">
+                          <LogOut className="w-3.5 h-3.5 text-rose-400 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-slate-900">
+                              {formatTime(row.checkOut.created_at)}
+                            </p>
+                            <p className="text-[10px] text-slate-500">
+                              {(row.checkOut as any).office_name || 'Office'} • {row.checkOut.distance_meters}m
+                            </p>
+                            {row.checkOut.photo_url && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewPhoto({
+                                    url: row.checkOut!.photo_url!,
+                                    title: `Check-Out Selfie (${row.dateStr})`,
+                                  })
+                                }
+                                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full transition-colors"
+                              >
+                                <ImageIcon className="w-3 h-3" /> View Photo
+                              </button>
+                            )}
+                          </div>
+                          {row.checkOut.photo_url && (
+                            <img
+                              src={row.checkOut.photo_url}
+                              alt="Check-out selfie"
+                              onClick={() =>
+                                setPreviewPhoto({
+                                  url: row.checkOut!.photo_url!,
+                                  title: `Check-Out Selfie (${row.dateStr})`,
+                                })
+                              }
+                              className="w-9 h-9 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-semibold inline-block">
+                          Session Active (Pending Punch Out)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      {/* Selfie Photo Preview Modal */}
+      {previewPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="relative max-w-md w-full glass-panel p-4 rounded-3xl text-center">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-slate-900">{previewPhoto.title}</h3>
+              <button
+                type="button"
+                onClick={() => setPreviewPhoto(null)}
+                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <img
+              src={previewPhoto.url}
+              alt="Verification selfie"
+              className="w-full h-80 object-cover rounded-2xl border border-slate-200 shadow-md"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
