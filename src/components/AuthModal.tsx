@@ -20,7 +20,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
   const handleLookupProfile = async (queryVal: string): Promise<UserProfile | null> => {
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/employees/lookup?q=${encodeURIComponent(queryVal)}`);
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/employees/lookup?q=${encodeURIComponent(queryVal)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.employee) return data.employee;
@@ -56,7 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
     // Send OTP via Backend Nodemailer Service
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/auth/send-otp`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: formattedInput }),
@@ -93,7 +93,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       : (phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`);
 
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/auth/verify-otp`, {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: formattedInput, otpToken }),
@@ -107,21 +107,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         setErrorMsg(data.error || 'Invalid or expired OTP code');
       }
     } catch (err: any) {
-      if (otpToken === '123456' || otpToken.length === 6) {
-        const userRole: UserRole = matchedProfile ? matchedProfile.role : 'employee';
-        const userProfile: UserProfile = matchedProfile || {
-          id: `usr-${Date.now()}`,
-          full_name: userRole === 'admin' ? `Admin (${formattedInput})` : `Employee (${formattedInput})`,
-          email: isEmail ? formattedInput : '',
-          phone: !isEmail ? formattedInput : '',
-          role: userRole,
-          is_active: true,
-          created_at: new Date().toISOString(),
-        };
-        onLoginSuccess(userProfile);
-        return;
-      }
-      setErrorMsg('Error verifying OTP code. Please check your network connection.');
+      setErrorMsg('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

@@ -12,7 +12,7 @@ export const supabase = isSupabaseConfigured
   : null;
 
 export const BACKEND_API_URL =
-  import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+  import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
 /**
  * Upload selfie photo blob to private bucket 'attendance-photos'

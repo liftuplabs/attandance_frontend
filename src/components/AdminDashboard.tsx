@@ -36,7 +36,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/employees`);
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/employees`);
       const data = await res.json();
       if (res.ok && data.employees) {
         setEmployees(data.employees);

@@ -16,7 +16,7 @@ export default function App() {
   // Fetch initial office list from Backend
   const fetchOffices = async () => {
     try {
-      const res = await fetch(`${BACKEND_API_URL}/api/offices`);
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/offices`);
       const data = await res.json();
       if (res.ok && data.offices) {
         setOffices(data.offices);
