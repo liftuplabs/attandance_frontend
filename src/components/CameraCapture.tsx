@@ -75,8 +75,11 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
 
-    // Draw frame to canvas cleanly without any flip/mirroring
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Draw frame to canvas mirrored to match the live video preview angle
+    context.save();
+    context.scale(-1, 1);
+    context.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+    context.restore();
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     setCapturedDataUrl(dataUrl);
@@ -166,7 +169,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transform scale-x-[-1]"
               />
               {/* Guide overlay */}
               <div className="absolute inset-0 border-2 border-dashed border-indigo-400/30 rounded-xl pointer-events-none flex items-center justify-center">
