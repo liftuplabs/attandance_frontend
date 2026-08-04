@@ -52,6 +52,16 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
     };
   }, []);
 
+  // Attach stream to video element whenever stream or captured state changes
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream, capturedDataUrl]);
+
   // Take Snapshot using Canvas
   const takeSnapshot = () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -65,7 +75,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
 
-    // Draw frame to canvas
+    // Draw frame to canvas cleanly without any flip/mirroring
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
@@ -124,44 +134,48 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
               Retry Camera
             </button>
           </div>
-        ) : capturedDataUrl ? (
-          /* Snapshot Preview */
-          <div className="relative w-full h-full">
-            <img
-              src={capturedDataUrl}
-              alt="Selfie snapshot"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white/90 to-transparent p-3 text-center">
-              <span className="text-xs text-emerald-600 font-medium flex items-center justify-center gap-1">
-                <CheckCircle className="w-3.5 h-3.5" />
-                Snapshot Ready for Upload
-              </span>
-            </div>
-          </div>
         ) : (
-          /* Live Stream */
-          <div className="relative w-full h-full">
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-500 text-xs gap-2">
-                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                Initializing Camera...
+          <>
+            {/* Snapshot Preview */}
+            {capturedDataUrl && (
+              <div className="relative w-full h-full">
+                <img
+                  src={capturedDataUrl}
+                  alt="Selfie snapshot"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white/90 to-transparent p-3 text-center">
+                  <span className="text-xs text-emerald-600 font-medium flex items-center justify-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Snapshot Ready for Upload
+                  </span>
+                </div>
               </div>
             )}
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover transform scale-x-[-1]"
-            />
-            {/* Guide overlay */}
-            <div className="absolute inset-0 border-2 border-dashed border-indigo-400/30 rounded-xl pointer-events-none flex items-center justify-center">
-              <span className="text-[10px] uppercase tracking-widest text-indigo-700/80 font-semibold bg-white/60 px-2 py-1 rounded">
-                Position Face Here
-              </span>
+
+            {/* Live Video Stream (kept in DOM so retaking never shows black screen) */}
+            <div className={`relative w-full h-full ${capturedDataUrl ? 'hidden' : 'block'}`}>
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-500 text-xs gap-2">
+                  <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                  Initializing Camera...
+                </div>
+              )}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              {/* Guide overlay */}
+              <div className="absolute inset-0 border-2 border-dashed border-indigo-400/30 rounded-xl pointer-events-none flex items-center justify-center">
+                <span className="text-[10px] uppercase tracking-widest text-indigo-700/80 font-semibold bg-white/60 px-2 py-1 rounded">
+                  Position Face Here
+                </span>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
