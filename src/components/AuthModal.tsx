@@ -190,24 +190,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-100/90 backdrop-blur-md">
-      <div className="w-full max-w-md p-6 sm:p-8 glass-panel rounded-3xl relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+      <div className="w-full max-w-md p-6 sm:p-8 glass-panel rounded-3xl relative overflow-hidden shadow-2xl border border-white/90">
 
         {/* Header */}
         <div className="text-center mb-6">
           <img src="/assets/Liftup-Logo.png" alt="LiftupLabs" className="h-14 w-auto mx-auto object-contain mb-3" />
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{stepTitle[step]}</h1>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{stepTitle[step]}</h1>
           <p className="text-xs text-slate-500 mt-1">{stepSubtitle[step]}</p>
         </div>
 
         {/* Alerts */}
         {error && (
-          <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+          <div className="mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 shadow-sm">
             <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
           </div>
         )}
         {info && (
-          <div className="mb-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs flex items-center gap-2">
+          <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 text-xs flex items-center gap-2 shadow-sm">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-amber-600" /><span>{info}</span>
           </div>
         )}
@@ -216,13 +216,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         {step === 'login' && (
           <form onSubmit={handleDirectLogin} className="space-y-4">
             {/* Email / Phone toggle */}
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
+            <div className="flex items-center p-1 bg-slate-100/90 rounded-2xl border border-slate-200/80">
               {(['email', 'phone'] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => { setAuthMethod(m); setError(null); setIdentifier(''); }}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${authMethod === m ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    authMethod === m
+                      ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
                 >
                   {m === 'email' ? <Mail className="w-3.5 h-3.5" /> : <Phone className="w-3.5 h-3.5" />}
                   {m === 'email' ? 'Email' : 'Phone'}
@@ -232,7 +236,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
             {/* Email / Phone Input */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
                 {authMethod === 'email' ? 'Email Address' : 'Mobile Phone Number'}
               </label>
               <div className="relative">
@@ -244,7 +248,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   placeholder={authMethod === 'email' ? 'name@company.com' : '+91 98765 43210'}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-semibold"
                   required
                 />
               </div>
@@ -253,12 +257,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             {/* Password Input */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-[11px] font-semibold text-slate-600">Password</label>
+                <label className="block text-[11px] font-bold text-slate-600">Password</label>
                 <button
                   type="button"
                   disabled={loading}
                   onClick={handleForgotSend}
-                  className="text-xs text-amber-600 hover:text-amber-800 font-semibold underline"
+                  className="text-xs text-amber-600 hover:text-amber-800 font-bold underline cursor-pointer"
                 >
                   Forgot password?
                 </button>
@@ -272,13 +276,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-semibold"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw((p) => !p)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -289,10 +293,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-900 font-bold rounded-xl text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              className="btn-tactile w-full py-3.5 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 font-extrabold rounded-2xl text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />

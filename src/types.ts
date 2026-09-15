@@ -20,8 +20,8 @@ export interface OfficeLocation {
   created_at?: string;
 }
 
-export type CheckType = 'in' | 'out';
-export type AttendanceStatus = 'valid' | 'out_of_range';
+export type CheckType = 'in' | 'out' | 'on_duty_in' | 'on_duty_out';
+export type AttendanceStatus = 'valid' | 'out_of_range' | 'pending_approval' | 'rejected';
 
 export interface AttendanceRecord {
   id: string;
@@ -35,6 +35,10 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   created_at: string;
   user_name?: string;
+  remarks?: string;
+  admin_notes?: string;
+  is_on_duty?: boolean;
+  approval_status?: 'pending' | 'approved' | 'rejected';
   profiles?: {
     full_name: string;
     phone: string;

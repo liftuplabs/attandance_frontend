@@ -13,6 +13,8 @@ import {
   Image as ImageIcon,
   X,
   Clock,
+  Briefcase,
+  Send,
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord, GeoCoordinates } from '../types';
 import { CameraCapture } from './CameraCapture';
@@ -58,6 +60,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
   } | null>(null);
 
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
+  const [onDutyRemarks, setOnDutyRemarks] = useState<string>('');
+  const [showOnDutyMode, setShowOnDutyMode] = useState<boolean>(false);
 
   useEffect(() => {
     if (offices.length > 0 && !selectedOfficeId) {
@@ -76,7 +80,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
   );
   const lastPunch = todaysPunches[0];
 
-  const isCheckedIn = lastPunch?.check_type === 'in';
+  const isCheckedIn = lastPunch?.check_type === 'in' || lastPunch?.check_type === 'on_duty_in';
   const canPunchIn = !isCheckedIn;
   const canPunchOut = isCheckedIn;
 
@@ -222,6 +226,69 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     }
   };
 
+  const handleRequestOnDuty = async (checkType: 'in' | 'out') => {
+    if (!capturedBlob && !capturedDataUrl) {
+      setShowCamera(true);
+      return;
+    }
+
+    if (!onDutyRemarks.trim()) {
+      alert('Please enter your On Duty purpose / client name / reason.');
+      return;
+    }
+
+    setLoadingAction(true);
+    setFeedbackMsg(null);
+
+    try {
+      let photoUrl = capturedDataUrl;
+      if (capturedBlob) {
+        photoUrl = await uploadSelfiePhoto(user.id, capturedBlob);
+      }
+
+      const response = await fetch(`${BACKEND_API_URL}/api/attendance/on-duty-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          office_id: activeOffice?.id,
+          check_type: checkType === 'out' ? 'on_duty_out' : 'on_duty_in',
+          lat: currentLat,
+          lng: currentLng,
+          accuracy_meters: currentAccuracy,
+          photo_url: photoUrl,
+          user_name: user.full_name,
+          remarks: onDutyRemarks.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.attendance) {
+        setFeedbackMsg({
+          type: 'success',
+          text: `On Duty request submitted successfully! Awaiting Admin verification. (${data.distance_meters}m from ${activeOffice?.name || 'Office'})`,
+        });
+        setCapturedBlob(null);
+        setCapturedDataUrl(null);
+        setOnDutyRemarks('');
+        onAttendanceUpdated();
+      } else {
+        setFeedbackMsg({
+          type: 'error',
+          text: data.error || 'Failed to submit On Duty request.',
+        });
+      }
+    } catch (err: any) {
+      setFeedbackMsg({
+        type: 'error',
+        text: `Server communication error: ${err.message}`,
+      });
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
   // ── Pair employee records into structured session rows ────────────────────
   const sessionRows = useMemo<EmployeeSessionRow[]>(() => {
     const userRecs = history.filter((r) => r.user_id === user.id);
@@ -235,8 +302,11 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
       const cur = sorted[i];
       const next = sorted[i + 1];
 
+      const isCurIn = cur.check_type === 'in' || cur.check_type === 'on_duty_in';
+      const isNextOut = next?.check_type === 'out' || next?.check_type === 'on_duty_out';
+
       let durationText = 'Active Session';
-      if (cur.check_type === 'in' && next?.check_type === 'out') {
+      if (isCurIn && isNextOut) {
         const diffMs = new Date(next.created_at).getTime() - new Date(cur.created_at).getTime();
         const mins = Math.floor(diffMs / (1000 * 60));
         const hrs = Math.floor(mins / 60);
@@ -252,8 +322,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         year: 'numeric',
       });
 
-      if (cur.check_type === 'in') {
-        const out = next?.check_type === 'out' ? next : null;
+      if (isCurIn) {
+        const out = isNextOut ? next : null;
         rows.push({
           key: cur.id,
           checkIn: cur,
@@ -290,108 +360,151 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     });
 
   return (
-    <div className="space-y-4">
-      {/* Geofence Radar Card */}
-      <div className="glass-panel p-4 rounded-2xl relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Compass className="w-4 h-4 text-amber-500" />
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight">Geofence Proximity Radar</h2>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Real-time GPS proximity validation with accuracy tolerance.
-            </p>
-          </div>
-
-          <div className="min-w-[200px]">
-            <select
-              value={selectedOfficeId}
-              onChange={(e) => setSelectedOfficeId(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            >
-              {offices.map((office) => (
-                <option key={office.id} value={office.id}>
-                  {office.name} ({office.radius_meters}m)
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* GPS Display Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-          {/* Box 1 */}
-          <div className="panel-inset p-3 rounded-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider">Your GPS Position</span>
-              <Navigation className="w-3.5 h-3.5 text-amber-500" />
-            </div>
-            <div className="font-mono text-xs text-slate-900">
-              <div>Lat: <span className="text-amber-600 font-semibold">{currentLat.toFixed(6)}</span></div>
-              <div>Lng: <span className="text-amber-600 font-semibold">{currentLng.toFixed(6)}</span></div>
-              <div className="mt-0.5 text-[10px] text-slate-500 font-sans">
-                Accuracy: <span className="text-emerald-600 font-medium">±{currentAccuracy}m</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Box 2 */}
-          <div className="panel-inset p-3 rounded-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider">Distance to Office</span>
-              <MapPin className="w-3.5 h-3.5 text-amber-500" />
+    <div className="space-y-6">
+      {/* ── Visual Biometric Geofence Radar Card ── */}
+      <div className="glass-panel p-5 sm:p-7 rounded-3xl relative overflow-hidden">
+        {/* Top Header & Office Pill Selector */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 shadow-md shadow-amber-500/20">
+              <Compass className="w-5 h-5" />
             </div>
             <div>
-              <span className={`text-xl font-extrabold ${isInRange ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {currentDistance} <span className="text-xs text-slate-500 font-normal">meters</span>
-              </span>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Allowed Radius: {activeOffice?.radius_meters}m
+              <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Geofence Radar</h2>
+              <p className="text-xs text-slate-500">
+                Satellite validation for <span className="font-semibold text-slate-700">{activeOffice?.name || 'Office'}</span>
               </p>
             </div>
           </div>
 
-          {/* Box 3 */}
-          <div
-            className={`p-3 rounded-xl border flex flex-col justify-between ${
-              isInRange
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-rose-50 border-rose-200 text-rose-800'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wider opacity-80">Geofence Status</span>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white text-slate-700 border border-slate-200">
-                {isCheckedIn ? 'CHECKED IN' : 'CHECKED OUT'}
+          {/* Floating Pill Office Selector */}
+          <div className="relative">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 hover:bg-slate-100 border border-slate-200/80 rounded-2xl shadow-inner transition-all">
+              <MapPin className="w-4 h-4 text-amber-500 shrink-0" />
+              <select
+                value={selectedOfficeId}
+                onChange={(e) => setSelectedOfficeId(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-2"
+              >
+                {offices.map((office) => (
+                  <option key={office.id} value={office.id}>
+                    {office.name} ({office.radius_meters}m)
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Circular Interactive Geofence Radar Beacon */}
+        <div className="relative my-6 flex flex-col items-center justify-center">
+          {/* Outer Ripple Rings */}
+          <div className="relative w-52 h-52 sm:w-60 sm:h-60 flex items-center justify-center">
+            {/* Outer Animated Pulse Ring */}
+            <div
+              className={`absolute inset-0 rounded-full border-2 animate-radar ${
+                isInRange
+                  ? 'border-emerald-400/40 bg-emerald-500/5'
+                  : 'border-amber-400/40 bg-amber-500/5'
+              }`}
+            />
+            {/* Middle Static Ring */}
+            <div
+              className={`absolute inset-5 rounded-full border border-dashed ${
+                isInRange ? 'border-emerald-300/60' : 'border-amber-300/60'
+              }`}
+            />
+            {/* Inner Ring */}
+            <div
+              className={`absolute inset-10 rounded-full border ${
+                isInRange ? 'border-emerald-200/80' : 'border-amber-200/80'
+              }`}
+            />
+
+            {/* Central Glowing Radar Core */}
+            <div
+              className={`relative z-10 w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center p-3 shadow-xl backdrop-blur-md transition-all duration-500 ${
+                isInRange
+                  ? 'bg-gradient-to-br from-emerald-500/15 via-white to-emerald-500/20 border-2 border-emerald-400/80 shadow-emerald-500/10'
+                  : 'bg-gradient-to-br from-amber-500/15 via-white to-orange-500/20 border-2 border-amber-400/80 shadow-amber-500/10'
+              }`}
+            >
+              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <Navigation className={`w-3.5 h-3.5 ${isInRange ? 'text-emerald-600' : 'text-amber-600'}`} />
+                <span>Distance</span>
+              </div>
+              <div className="my-0.5">
+                <span
+                  className={`text-3xl sm:text-4xl font-black tracking-tight ${
+                    isInRange ? 'text-emerald-600' : 'text-rose-600'
+                  }`}
+                >
+                  {currentDistance}
+                </span>
+                <span className="text-xs font-bold text-slate-400 ml-1">m</span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-medium">
+                Max: {activeOffice?.radius_meters}m
               </span>
             </div>
-            <div className="flex items-center gap-1.5 my-1">
+          </div>
+
+          {/* Organic Status Pill */}
+          <div className="mt-4">
+            <div
+              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all ${
+                isInRange
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300/80'
+                  : 'bg-rose-50 text-rose-700 border border-rose-300/80'
+              }`}
+            >
               {isInRange ? (
                 <>
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                  <span className="text-xs font-bold text-emerald-700">IN RANGE</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Within Perimeter ({activeOffice?.name})</span>
                 </>
               ) : (
                 <>
-                  <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
-                  <span className="text-xs font-bold text-rose-700">OUT OF RANGE</span>
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  <span>Outside Geofence Perimeter</span>
                 </>
               )}
             </div>
           </div>
         </div>
 
-        {/* GPS Testing Controls */}
+        {/* GPS Telemetry Pill Bar */}
+        <div className="mt-4 pt-4 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100/90 border border-slate-200/80 text-[11px] font-mono text-slate-700">
+              <span className="text-amber-600 font-bold">GPS:</span>
+              <span>{currentLat.toFixed(5)}, {currentLng.toFixed(5)}</span>
+            </div>
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50/80 border border-emerald-200/80 text-[11px] text-emerald-800 font-semibold">
+              <span>±{currentAccuracy}m accuracy</span>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isCheckedIn ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+              }`}
+            />
+            <span>{isCheckedIn ? 'Currently Checked In' : 'Currently Checked Out'}</span>
+          </div>
+        </div>
+
+        {/* GPS Dev Simulation Toggle */}
         {import.meta.env.DEV && (
-          <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="mt-3 pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <button
               type="button"
               onClick={() => setIsSimulatingGps(!isSimulatingGps)}
-              className="text-slate-500 hover:text-amber-600 flex items-center gap-1 transition-colors text-[11px]"
+              className="text-slate-400 hover:text-amber-600 flex items-center gap-1.5 transition-colors text-[11px]"
             >
               <Sliders className="w-3 h-3 text-amber-500" />
-              <span>{isSimulatingGps ? 'Close Dev GPS Panel' : 'Dev GPS Controls'}</span>
+              <span>{isSimulatingGps ? 'Hide Developer GPS Controls' : 'Developer GPS Controls'}</span>
             </button>
 
             {isSimulatingGps && (
@@ -404,7 +517,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                       setSimLng(activeOffice.lng.toString());
                     }
                   }}
-                  className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 rounded text-[10px] font-medium"
+                  className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] font-semibold hover:bg-emerald-100 transition-colors"
                 >
                   Set Inside (0m)
                 </button>
@@ -416,7 +529,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                       setSimLng((activeOffice.lng + 0.005).toString());
                     }
                   }}
-                  className="px-2 py-0.5 bg-rose-500/20 border border-rose-500/30 text-rose-700 rounded text-[10px] font-medium"
+                  className="px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-semibold hover:bg-rose-100 transition-colors"
                 >
                   Set Out of Range (&gt;500m)
                 </button>
@@ -426,16 +539,21 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         )}
       </div>
 
-      {/* Selfie Verification & Action Controls */}
-      <div className="glass-panel p-4 rounded-2xl">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Camera className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-bold text-slate-900">Punch Verification Snapshot</h3>
+      {/* ── Selfie Biometric Verification & Punch Actions ── */}
+      <div className="glass-panel p-5 sm:p-7 rounded-3xl">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+              <Camera className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">Biometric Selfie Verification</h3>
+              <p className="text-xs text-slate-500">Live facial snapshot required before recording punch</p>
+            </div>
           </div>
           {capturedDataUrl && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              <CheckCircle2 className="w-3 h-3" /> Photo Attached
+            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full shadow-sm">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Photo Ready
             </span>
           )}
         </div>
@@ -446,19 +564,19 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
             onCancel={() => setShowCamera(false)}
           />
         ) : capturedDataUrl ? (
-          <div className="flex items-center gap-3 panel-inset p-2.5 rounded-xl mb-4">
+          <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 mb-5">
             <img
               src={capturedDataUrl}
               alt="Verification preview"
-              className="w-12 h-12 rounded-lg object-cover border border-slate-200 shadow-sm"
+              className="w-14 h-14 rounded-xl object-cover border border-slate-200 shadow-sm"
             />
-            <div className="flex-1">
-              <h4 className="text-xs font-semibold text-slate-900">Selfie Photo Captured</h4>
-              <p className="text-[10px] text-slate-500">Ready for submission to attendance log.</p>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-bold text-slate-900">Selfie Photo Captured</h4>
+              <p className="text-[11px] text-slate-500 truncate">Ready to attach to your attendance log.</p>
             </div>
             <button
               onClick={() => setShowCamera(true)}
-              className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-medium rounded-lg transition-colors shadow-sm"
+              className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shadow-sm"
             >
               Retake
             </button>
@@ -466,17 +584,19 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         ) : (
           <button
             onClick={() => setShowCamera(true)}
-            className="w-full py-3 mb-4 panel-inset hover:bg-slate-200 rounded-xl text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all group"
+            className="w-full py-4 mb-5 rounded-2xl border-2 border-dashed border-amber-300/80 hover:border-amber-400 bg-amber-50/30 hover:bg-amber-50/70 text-slate-700 text-xs font-bold flex items-center justify-center gap-2.5 transition-all group shadow-sm"
           >
-            <Camera className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
-            <span>Take Selfie Photo (Required for Punching)</span>
+            <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Camera className="w-4 h-4" />
+            </div>
+            <span>Take Selfie Photo (Required to Punch)</span>
           </button>
         )}
 
         {/* Feedback Messages */}
         {feedbackMsg && (
           <div
-            className={`mb-4 p-3 rounded-xl border text-xs flex items-center gap-2 ${
+            className={`mb-5 p-3.5 rounded-2xl border text-xs flex items-center gap-2.5 shadow-sm ${
               feedbackMsg.type === 'success'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : feedbackMsg.type === 'warning'
@@ -485,30 +605,88 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
             }`}
           >
             {feedbackMsg.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+              <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-500" />
             ) : (
-              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500" />
             )}
-            <span>{feedbackMsg.text}</span>
+            <span className="font-semibold">{feedbackMsg.text}</span>
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* On Duty (OD) Request Panel */}
+        {(!isInRange || showOnDutyMode) && (
+          <div className="mb-5 p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-500/10 border-2 border-amber-400/80 shadow-lg shadow-amber-500/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold shadow-sm">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    Outside Range? Send On Duty (OD) Request
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300/80">
+                      Admin Verified
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    On a client visit, site inspection, or remote project? Submit your live selfie photo and location for instant admin verification.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Duty Purpose / Remarks Input */}
+            <div className="mb-4">
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                On Duty Purpose / Client Name / Remarks <span className="text-amber-600">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., Client meeting at Baner, Site survey, Customer demo..."
+                value={onDutyRemarks}
+                onChange={(e) => setOnDutyRemarks(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-amber-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 shadow-sm"
+              />
+            </div>
+
+            {/* Dedicated On Duty Action Button */}
+            <button
+              disabled={loadingAction || (!canPunchIn && !canPunchOut)}
+              onClick={() => handleRequestOnDuty(canPunchIn ? 'in' : 'out')}
+              className="w-full py-3.5 px-5 rounded-xl font-extrabold text-xs sm:text-sm bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              {loadingAction ? (
+                <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>
+                    {canPunchIn
+                      ? 'SUBMIT ON DUTY CHECK-IN REQUEST'
+                      : 'SUBMIT ON DUTY CHECK-OUT REQUEST'}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Tactile Action Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             disabled={loadingAction || !canPunchIn}
             onClick={() => handlePunchAttendance('in')}
-            className={`py-3 px-3 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all text-xs ${
+            className={`py-4 px-6 font-extrabold rounded-2xl flex items-center justify-center gap-2.5 text-sm transition-all ${
               canPunchIn
-                ? 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-900 font-bold'
-                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                ? 'btn-tactile bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 cursor-pointer'
+                : 'bg-slate-100 text-slate-400 border border-slate-200/80 cursor-not-allowed'
             }`}
           >
             {loadingAction ? (
-              <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
-                <LogIn className="w-4 h-4" />
+                <LogIn className="w-5 h-5" />
                 <span>{isCheckedIn ? 'ALREADY CHECKED IN' : 'PUNCH IN'}</span>
               </>
             )}
@@ -517,181 +695,263 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
           <button
             disabled={loadingAction || !canPunchOut}
             onClick={() => handlePunchAttendance('out')}
-            className={`py-3 px-3 font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all text-xs ${
+            className={`py-4 px-6 font-extrabold rounded-2xl flex items-center justify-center gap-2.5 text-sm transition-all ${
               canPunchOut
-                ? 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-900 font-bold'
-                : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                ? 'btn-tactile bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white cursor-pointer shadow-rose-500/20'
+                : 'bg-slate-100 text-slate-400 border border-slate-200/80 cursor-not-allowed'
             }`}
           >
             {loadingAction ? (
-              <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-5 h-5" />
                 <span>{canPunchOut ? 'PUNCH OUT' : 'REQUIRES CHECK-IN'}</span>
               </>
             )}
           </button>
         </div>
+
+        {/* Optional Manual Toggle for On Duty Mode */}
+        {isInRange && (
+          <div className="mt-3 text-center">
+            <button
+              type="button"
+              onClick={() => setShowOnDutyMode(!showOnDutyMode)}
+              className="text-xs text-amber-700 font-bold hover:underline inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>{showOnDutyMode ? 'Switch to Standard Office Mode' : 'Heading for Field Duty? Open On Duty Request Form'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ── Employee Structured Session History Table ── */}
-      <div className="glass-panel p-4 rounded-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-bold text-slate-900">Daily Attendance & Session History</h3>
+      {/* ── Employee Attendance Sessions (Responsive Glass Cards) ── */}
+      <div className="glass-panel p-5 sm:p-7 rounded-3xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+              <History className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">Attendance Log</h3>
+              <p className="text-xs text-slate-500">Structured daily sessions and punch records</p>
+            </div>
           </div>
-          <span className="text-xs text-slate-500 font-medium">{sessionRows.length} Sessions Logged</span>
+          <span className="text-xs text-slate-600 font-bold bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+            {sessionRows.length} Sessions Logged
+          </span>
         </div>
 
         {sessionRows.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-xs italic">
-            No attendance sessions logged yet. Use the Punch In button above to start your first session.
+          <div className="text-center py-12 text-slate-400 text-xs italic">
+            No attendance sessions logged yet. Take a selfie and punch in above to begin.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wider text-[10px]">
-                    Date & Work Duration
-                  </th>
-                  <th className="px-3 py-2.5 font-semibold text-emerald-600 uppercase tracking-wider text-[10px]">
-                    <span className="flex items-center gap-1">
+          <div className="space-y-3">
+            {sessionRows.map((row) => (
+              <div
+                key={row.key}
+                className="glass-panel-interactive p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4"
+              >
+                {/* Session Header / Date & Duration */}
+                <div className="flex items-center gap-3 min-w-[180px]">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-700 flex items-center justify-center font-extrabold text-sm">
+                    {row.dateStr.split(' ')[0]}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900">{row.dateStr}</h4>
+                    <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      <span>{row.durationText}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Check-In Pod */}
+                <div className="flex-1 bg-slate-50/80 rounded-2xl p-3 border border-slate-200/70">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
                       <LogIn className="w-3 h-3" /> Check-In
                     </span>
-                  </th>
-                  <th className="px-3 py-2.5 font-semibold text-rose-500 uppercase tracking-wider text-[10px]">
-                    <span className="flex items-center gap-1">
-                      <LogOut className="w-3 h-3" /> Check-Out
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {sessionRows.map((row) => (
-                  <tr key={row.key} className="hover:bg-slate-50 transition-colors">
-                    {/* Column 1: Date & Duration */}
-                    <td className="px-3 py-3 align-top">
-                      <p className="font-bold text-slate-900 text-xs">{row.dateStr}</p>
-                      <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-md w-max font-semibold">
-                        <Clock className="w-3 h-3 text-amber-600" />
-                        <span>{row.durationText}</span>
-                      </div>
-                    </td>
-
-                    {/* Column 2: Check-In Details */}
-                    <td className="px-3 py-3 align-top">
-                      {row.checkIn ? (
-                        <div className="flex items-start gap-2">
-                          <LogIn className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-slate-900">
-                              {formatTime(row.checkIn.created_at)}
-                            </p>
-                            <p className="text-[10px] text-slate-500">
-                              {(row.checkIn as any).office_name || 'Office'} • {row.checkIn.distance_meters}m
-                            </p>
-                            {row.checkIn.photo_url && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPreviewPhoto({
-                                    url: row.checkIn!.photo_url!,
-                                    title: `Check-In Selfie (${row.dateStr})`,
-                                  })
-                                }
-                                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full transition-colors"
-                              >
-                                <ImageIcon className="w-3 h-3" /> View Photo
-                              </button>
-                            )}
-                          </div>
-                          {row.checkIn.photo_url && (
+                    {row.checkIn && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {(row.checkIn as any).office_name || 'Office'} • {row.checkIn.distance_meters}m
+                      </span>
+                    )}
+                  </div>
+                  {row.checkIn ? (
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-extrabold text-slate-900">
+                          {formatTime(row.checkIn.created_at)}
+                        </span>
+                        {row.checkIn.photo_url && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewPhoto({
+                                  url: row.checkIn!.photo_url!,
+                                  title: `Check-In Photo (${row.dateStr})`,
+                                })
+                              }
+                              className="text-[10px] text-amber-700 font-bold hover:underline flex items-center gap-1"
+                            >
+                              <ImageIcon className="w-3 h-3" /> View
+                            </button>
                             <img
                               src={row.checkIn.photo_url}
                               alt="Check-in selfie"
                               onClick={() =>
                                 setPreviewPhoto({
                                   url: row.checkIn!.photo_url!,
-                                  title: `Check-In Selfie (${row.dateStr})`,
+                                  title: `Check-In Photo (${row.dateStr})`,
                                 })
                               }
-                              className="w-9 h-9 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                              className="w-8 h-8 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
                             />
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-300 italic text-xs">—</span>
-                      )}
-                    </td>
-
-                    {/* Column 3: Check-Out Details */}
-                    <td className="px-3 py-3 align-top">
-                      {row.checkOut ? (
-                        <div className="flex items-start gap-2">
-                          <LogOut className="w-3.5 h-3.5 text-rose-400 mt-0.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-slate-900">
-                              {formatTime(row.checkOut.created_at)}
-                            </p>
-                            <p className="text-[10px] text-slate-500">
-                              {(row.checkOut as any).office_name || 'Office'} • {row.checkOut.distance_meters}m
-                            </p>
-                            {row.checkOut.photo_url && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPreviewPhoto({
-                                    url: row.checkOut!.photo_url!,
-                                    title: `Check-Out Selfie (${row.dateStr})`,
-                                  })
-                                }
-                                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full transition-colors"
-                              >
-                                <ImageIcon className="w-3 h-3" /> View Photo
-                              </button>
-                            )}
                           </div>
-                          {row.checkOut.photo_url && (
+                        )}
+                      </div>
+
+                      {/* Status Badge & Remarks */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {row.checkIn.status === 'valid' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            {row.checkIn.is_on_duty || row.checkIn.check_type.startsWith('on_duty') ? 'OD Approved' : 'Verified'}
+                          </span>
+                        ) : row.checkIn.status === 'pending_approval' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full">
+                            <Clock className="w-2.5 h-2.5 animate-spin" />
+                            OD Pending Approval
+                          </span>
+                        ) : row.checkIn.status === 'rejected' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            OD Rejected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            Out of Range
+                          </span>
+                        )}
+                      </div>
+
+                      {row.checkIn.remarks && (
+                        <div className="mt-1.5 text-[10px] text-amber-900 bg-amber-50/70 border border-amber-200/60 rounded-lg p-1.5">
+                          <span className="font-bold">OD Reason:</span> {row.checkIn.remarks}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 text-xs italic">—</span>
+                  )}
+                </div>
+
+                {/* Check-Out Pod */}
+                <div className="flex-1 bg-slate-50/80 rounded-2xl p-3 border border-slate-200/70">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1">
+                      <LogOut className="w-3 h-3" /> Check-Out
+                    </span>
+                    {row.checkOut && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {(row.checkOut as any).office_name || 'Office'} • {row.checkOut.distance_meters}m
+                      </span>
+                    )}
+                  </div>
+                  {row.checkOut ? (
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-extrabold text-slate-900">
+                          {formatTime(row.checkOut.created_at)}
+                        </span>
+                        {row.checkOut.photo_url && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewPhoto({
+                                  url: row.checkOut!.photo_url!,
+                                  title: `Check-Out Photo (${row.dateStr})`,
+                                })
+                              }
+                              className="text-[10px] text-amber-700 font-bold hover:underline flex items-center gap-1"
+                            >
+                              <ImageIcon className="w-3 h-3" /> View
+                            </button>
                             <img
                               src={row.checkOut.photo_url}
                               alt="Check-out selfie"
                               onClick={() =>
                                 setPreviewPhoto({
                                   url: row.checkOut!.photo_url!,
-                                  title: `Check-Out Selfie (${row.dateStr})`,
+                                  title: `Check-Out Photo (${row.dateStr})`,
                                 })
                               }
-                              className="w-9 h-9 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                              className="w-8 h-8 rounded-lg object-cover border border-slate-200 cursor-pointer hover:opacity-80 transition-opacity"
                             />
-                          )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Status Badge & Remarks */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {row.checkOut.status === 'valid' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            {row.checkOut.is_on_duty || row.checkOut.check_type.startsWith('on_duty') ? 'OD Approved' : 'Verified'}
+                          </span>
+                        ) : row.checkOut.status === 'pending_approval' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full">
+                            <Clock className="w-2.5 h-2.5 animate-spin" />
+                            OD Pending Approval
+                          </span>
+                        ) : row.checkOut.status === 'rejected' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            OD Rejected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            Out of Range
+                          </span>
+                        )}
+                      </div>
+
+                      {row.checkOut.remarks && (
+                        <div className="mt-1.5 text-[10px] text-amber-900 bg-amber-50/70 border border-amber-200/60 rounded-lg p-1.5">
+                          <span className="font-bold">OD Reason:</span> {row.checkOut.remarks}
                         </div>
-                      ) : (
-                        <span className="text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-semibold inline-block">
-                          Session Active (Pending Punch Out)
-                        </span>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  ) : (
+                    <span className="text-amber-700 font-semibold text-[11px]">
+                      Session in progress
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
       {/* Selfie Photo Preview Modal */}
       {previewPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="relative max-w-md w-full glass-panel p-4 rounded-3xl text-center">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold text-slate-900">{previewPhoto.title}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
+          <div className="relative max-w-md w-full glass-panel p-5 rounded-3xl text-center shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-extrabold text-slate-900">{previewPhoto.title}</h3>
               <button
                 type="button"
                 onClick={() => setPreviewPhoto(null)}
-                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -699,7 +959,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
             <img
               src={previewPhoto.url}
               alt="Verification selfie"
-              className="w-full h-80 object-cover rounded-2xl border border-slate-200 shadow-md"
+              className="w-full h-80 object-cover rounded-2xl border border-slate-200/80 shadow-md"
             />
           </div>
         </div>

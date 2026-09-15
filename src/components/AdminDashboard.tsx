@@ -1,5 +1,23 @@
 import React, { useState, useMemo } from 'react';
-import { Shield, Search, FileSpreadsheet, CheckCircle2, AlertTriangle, LogIn, LogOut, Image as ImageIcon, X } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Search,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertTriangle,
+  LogIn,
+  LogOut,
+  Image as ImageIcon,
+  X,
+  Users,
+  Activity,
+  RotateCw,
+  Briefcase,
+  Check,
+  MapPin,
+  ExternalLink,
+  Clock,
+} from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord } from '../types';
 import { OfficeManager } from './OfficeManager';
 import { EmployeeManager } from './EmployeeManager';
@@ -33,10 +51,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onOfficeDeleted,
   onRefreshData,
 }) => {
-  const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'out_of_range'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'pending_approval' | 'out_of_range'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const fetchEmployees = async () => {
     try {
@@ -49,6 +72,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   React.useEffect(() => {
     fetchEmployees();
   }, []);
+
+  // ── Pending On Duty Requests ──────────────────────────────────────────────
+  const pendingOdRequests = useMemo(() => {
+    return history.filter((h) => h.status === 'pending_approval');
+  }, [history]);
+
+  const handleApproveReject = async (id: string, action: 'approve' | 'reject') => {
+    setReviewingId(id);
+    setActionMessage(null);
+    try {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/approve-od`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage({
+          type: 'success',
+          text: action === 'approve' ? 'On Duty request approved successfully!' : 'On Duty request rejected.',
+        });
+        onRefreshData();
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: data.error || 'Failed to update request.',
+        });
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: `Network error: ${err.message}`,
+      });
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   // ── KPI Metrics ────────────────────────────────────────────────────────────
   const totalCount = history.length;
@@ -76,8 +136,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const name = (cur as any).full_name || (cur as any).user_name || 'Unknown';
         const phone = (cur as any).phone || '';
         const email = (cur as any).email || '';
-        if (cur.check_type === 'in') {
-          const out = next?.check_type === 'out' ? next : null;
+        const isCurIn = cur.check_type === 'in' || cur.check_type === 'on_duty_in';
+        const isNextOut = next?.check_type === 'out' || next?.check_type === 'on_duty_out';
+
+        if (isCurIn) {
+          const out = isNextOut ? next : null;
           rows.push({
             key: cur.id,
             checkIn: cur,
@@ -125,18 +188,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       timeZone: 'Asia/Kolkata',
     });
 
-  const StatusBadge = ({ status }: { status: string }) =>
-    status === 'valid' ? (
-      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-        <CheckCircle2 className="w-3 h-3" />
-        Valid
-      </span>
-    ) : (
+  const StatusBadge = ({ rec }: { rec: AttendanceRecord }) => {
+    if (rec.status === 'valid') {
+      const isOd = rec.is_on_duty || rec.check_type.startsWith('on_duty');
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+          <CheckCircle2 className="w-3 h-3" />
+          {isOd ? 'OD Approved' : 'Valid'}
+        </span>
+      );
+    }
+    if (rec.status === 'pending_approval') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded-full animate-pulse">
+          <Clock className="w-3 h-3 text-amber-600" />
+          Pending OD
+        </span>
+      );
+    }
+    if (rec.status === 'rejected') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">
+          <AlertTriangle className="w-3 h-3" />
+          OD Rejected
+        </span>
+      );
+    }
+    return (
       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">
         <AlertTriangle className="w-3 h-3" />
         Out of Range
       </span>
     );
+  };
 
   const SessionCell = ({
     rec,
@@ -162,8 +246,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <p className="text-[10px] text-slate-500">
               {office} • {rec.distance_meters}m
             </p>
-            <div className="mt-1 flex items-center gap-2">
-              <StatusBadge status={rec.status} />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <StatusBadge rec={rec} />
               {rec.photo_url && (
                 <button
                   type="button"
@@ -180,6 +264,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               )}
             </div>
+            {rec.remarks && (
+              <div className="mt-1.5 text-[10px] text-amber-900 bg-amber-50/80 border border-amber-200/60 rounded px-1.5 py-0.5">
+                <span className="font-bold">OD Reason:</span> {rec.remarks}
+              </div>
+            )}
           </div>
           {rec.photo_url && (
             <img
@@ -200,57 +289,266 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="glass-panel px-4 py-3 rounded-2xl flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="w-4 h-4 text-amber-500" />
-          <h1 className="text-sm font-bold text-slate-900 tracking-tight">Admin Operations Console</h1>
-          <span className="text-[11px] text-slate-500 hidden md:inline ml-2 border-l border-slate-200 pl-3">
-            Geofence compliance & selfie audit logs
-          </span>
+    <div className="space-y-6">
+      {/* Header Bar */}
+      <div className="glass-panel px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 text-white flex items-center justify-center shadow-md shadow-orange-500/20">
+            <LayoutDashboard className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              Admin Operations Hub
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700">
+                Live Audits
+              </span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Geofence compliance, real-time rosters & selfie audit trails
+            </p>
+          </div>
         </div>
         <button
           onClick={() => {
             onRefreshData();
             fetchEmployees();
           }}
-          className="px-3 py-1 bg-panel-inset hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+          className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 text-xs font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all active:scale-95"
         >
-          Refresh Data
+          <RotateCw className="w-3.5 h-3.5 text-orange-500" />
+          <span>Sync Data</span>
         </button>
       </div>
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* KPI Stats Cards - Organic Elevated Pods */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total Punches', value: totalCount, color: 'text-slate-900' },
-          { label: 'Compliance Rate', value: `${validPct}%`, color: 'text-emerald-600' },
-          { label: 'Out of Range', value: outOfRangeCount, color: 'text-rose-600' },
-          { label: 'Total Staff', value: employees.length, color: 'text-amber-600', amber: true },
-        ].map(({ label, value, color, amber }) => (
+          {
+            label: 'Total Punches',
+            value: totalCount,
+            subtitle: 'Logged entries today',
+            icon: Activity,
+            iconBg: 'bg-orange-100 text-orange-600',
+            badgeBg: 'bg-orange-50 text-orange-700 border-orange-200/60',
+          },
+          {
+            label: 'Compliance Rate',
+            value: `${validPct}%`,
+            subtitle: 'Within office radius',
+            icon: CheckCircle2,
+            iconBg: 'bg-emerald-100 text-emerald-600',
+            badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
+          },
+          {
+            label: 'Pending OD Requests',
+            value: pendingOdRequests.length,
+            subtitle: pendingOdRequests.length > 0 ? 'Requires action' : 'All clear',
+            icon: Briefcase,
+            iconBg:
+              pendingOdRequests.length > 0
+                ? 'bg-amber-400 text-slate-950 animate-bounce'
+                : 'bg-amber-100 text-amber-700',
+            badgeBg:
+              pendingOdRequests.length > 0
+                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                : 'bg-slate-100 text-slate-600 border-slate-200',
+          },
+          {
+            label: 'Active Staff',
+            value: employees.length,
+            subtitle: 'Registered profiles',
+            icon: Users,
+            iconBg: 'bg-indigo-100 text-indigo-700',
+            badgeBg: 'bg-indigo-50 text-indigo-800 border-indigo-200/60',
+          },
+        ].map(({ label, value, subtitle, icon: Icon, iconBg, badgeBg }) => (
           <div
             key={label}
-            className={`panel-inset px-3.5 py-2.5 rounded-xl ${
-              amber ? 'bg-gradient-to-b from-amber-50 to-transparent border border-amber-200' : ''
-            }`}
+            className="glass-panel p-5 relative overflow-hidden transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
           >
-            <span
-              className={`text-[10px] font-semibold uppercase tracking-wider block ${
-                amber ? 'text-amber-600' : 'text-slate-500'
-              }`}
-            >
-              {label}
-            </span>
-            <span className={`text-xl font-extrabold leading-tight block mt-0.5 ${color}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-10 h-10 rounded-2xl ${iconBg} flex items-center justify-center shadow-sm`}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${badgeBg}`}>
+                Active
+              </span>
+            </div>
+            <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               {value}
-            </span>
+            </p>
+            <p className="text-xs font-bold text-slate-800 mt-1">{label}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>
           </div>
         ))}
       </div>
 
-      {/* Managers */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── On Duty (OD) Verification Queue ── */}
+      <div className="glass-panel p-6 border-2 border-amber-400/50 relative overflow-hidden shadow-lg shadow-amber-500/5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-extrabold shadow-md shadow-amber-500/20">
+              <Briefcase className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                On Duty (OD) Verification Queue
+                {pendingOdRequests.length > 0 ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 animate-pulse">
+                    {pendingOdRequests.length} Pending
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                    0 Pending
+                  </span>
+                )}
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Review field attendance requests with verified selfie photos, GPS telemetry & duty remarks
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {actionMessage && (
+          <div
+            className={`mb-4 p-3 rounded-2xl text-xs flex items-center gap-2 shadow-sm ${
+              actionMessage.type === 'success'
+                ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border border-rose-200 text-rose-800'
+            }`}
+          >
+            {actionMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span className="font-semibold">{actionMessage.text}</span>
+          </div>
+        )}
+
+        {pendingOdRequests.length === 0 ? (
+          <div className="p-8 rounded-2xl bg-white/50 border border-dashed border-slate-200 text-center text-xs text-slate-400">
+            ✨ No pending On Duty requests at this moment. All field punch requests have been verified.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pendingOdRequests.map((req) => {
+              const empName = (req as any).user_name || req.profiles?.full_name || 'Employee';
+              const empPhone = (req as any).phone || req.profiles?.phone || '';
+              const officeName = (req as any).office_name || req.offices?.name || 'Assigned Office';
+              const isCheckingIn = req.check_type === 'on_duty_in' || req.check_type === 'in';
+
+              return (
+                <div
+                  key={req.id}
+                  className="glass-panel-interactive p-4 sm:p-5 rounded-2xl border border-amber-300/80 bg-white/80 shadow-md flex flex-col justify-between gap-4"
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Selfie Preview */}
+                    {req.photo_url ? (
+                      <div className="relative group shrink-0">
+                        <img
+                          src={req.photo_url}
+                          alt="Selfie verification"
+                          onClick={() =>
+                            setPreviewPhoto({
+                              url: req.photo_url!,
+                              title: `${empName} - On Duty Request Selfie`,
+                            })
+                          }
+                          className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400 cursor-pointer shadow-sm group-hover:opacity-90 transition-opacity"
+                        />
+                        <span className="absolute bottom-1 right-1 bg-slate-950/75 text-white p-1 rounded-lg text-[9px] pointer-events-none">
+                          <ImageIcon className="w-3 h-3" />
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 text-xs shrink-0">
+                        No Photo
+                      </div>
+                    )}
+
+                    {/* Employee & Telemetry Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-black text-slate-900 truncate">{empName}</h4>
+                        <span
+                          className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            isCheckingIn
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {isCheckingIn ? 'Check-In' : 'Check-Out'}
+                        </span>
+                      </div>
+
+                      {empPhone && <p className="text-[10px] text-slate-500">{empPhone}</p>}
+                      <p className="text-[10px] text-slate-400 mt-0.5">{fmt(req.created_at)}</p>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
+                          {officeName} • {req.distance_meters}m away
+                        </span>
+                        <a
+                          href={`https://www.google.com/maps?q=${req.lat},${req.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold hover:bg-amber-100 transition-colors"
+                        >
+                          <MapPin className="w-2.5 h-2.5 text-amber-600" />
+                          <span>Google Maps</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Remarks / Stated Purpose */}
+                  {req.remarks && (
+                    <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-xs text-amber-950">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-0.5">
+                        On Duty Purpose:
+                      </span>
+                      <p className="font-medium">{req.remarks}</p>
+                    </div>
+                  )}
+
+                  {/* Approve / Reject Controls */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      disabled={reviewingId === req.id}
+                      onClick={() => handleApproveReject(req.id, 'approve')}
+                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                    >
+                      {reviewingId === req.id ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Approve Attendance</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      disabled={reviewingId === req.id}
+                      onClick={() => handleApproveReject(req.id, 'reject')}
+                      className="py-2 px-3 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Reject</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Managers Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <EmployeeManager
           employees={employees}
           onEmployeeAdded={(e) => setEmployees((p) => [e, ...p])}
@@ -266,41 +564,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* ── Audit Log Table ── */}
-      <div className="glass-panel p-4 rounded-2xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-bold text-slate-900">Employee Attendance Audit Logs</h2>
+      <div className="glass-panel p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shadow-sm">
+              <FileSpreadsheet className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-slate-900">Attendance Audit Logs</h2>
+              <p className="text-[11px] text-slate-500">Pairing Check-In & Check-Out records</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Search */}
-            <div className="relative w-36 sm:w-44">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400 pointer-events-none" />
+            <div className="relative min-w-[180px] sm:w-52">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search employee…"
+                placeholder="Search staff by name…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                className="w-full pl-9 pr-3 py-1.5 bg-white/90 border border-slate-200 rounded-full text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
               />
             </div>
-            {/* Filter */}
-            <div className="flex items-center gap-0.5 bg-panel-inset p-0.5 rounded-lg">
-              {(['all', 'valid', 'out_of_range'] as const).map((f) => (
+            {/* Segmented Pill Filter */}
+            <div className="flex items-center p-1 bg-slate-100/90 rounded-full border border-slate-200/80">
+              {(['all', 'valid', 'pending_approval', 'out_of_range'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setStatusFilter(f)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                  className={`px-3 py-1 text-[11px] font-bold rounded-full transition-all ${
                     statusFilter === f
                       ? f === 'all'
-                        ? 'bg-amber-400 text-slate-900 font-bold'
+                        ? 'bg-orange-500 text-white shadow-sm'
                         : f === 'valid'
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-rose-500 text-white'
+                        ? 'bg-emerald-500 text-white shadow-sm'
+                        : f === 'pending_approval'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'bg-rose-500 text-white shadow-sm'
                       : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  {f === 'all' ? 'All' : f === 'valid' ? 'Valid' : 'Out of Range'}
+                  {f === 'all'
+                    ? 'All Logs'
+                    : f === 'valid'
+                    ? 'Valid'
+                    : f === 'pending_approval'
+                    ? `Pending OD (${pendingOdRequests.length})`
+                    : 'Flagged'}
                 </button>
               ))}
             </div>
@@ -308,26 +619,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-xs italic">
-            No attendance records matching filter criteria.
+          <div className="text-center py-12 text-slate-400 text-xs italic">
+            No attendance records matching your filter criteria.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/80 shadow-sm bg-white/60 backdrop-blur-sm">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-slate-50/90 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-2.5 font-semibold text-slate-600 uppercase tracking-wider text-[10px] w-1/3">
+                  <th className="px-4 py-3 font-bold text-slate-600 uppercase tracking-wider text-[10px] w-1/3">
                     Employee Details
                   </th>
-                  <th className="px-3 py-2.5 font-semibold text-emerald-600 uppercase tracking-wider text-[10px] w-1/3">
-                    <span className="flex items-center gap-1">
-                      <LogIn className="w-3 h-3" />
+                  <th className="px-4 py-3 font-bold text-emerald-700 uppercase tracking-wider text-[10px] w-1/3">
+                    <span className="flex items-center gap-1.5">
+                      <LogIn className="w-3.5 h-3.5 text-emerald-600" />
                       Check-In Session
                     </span>
                   </th>
-                  <th className="px-3 py-2.5 font-semibold text-rose-500 uppercase tracking-wider text-[10px] w-1/3">
-                    <span className="flex items-center gap-1">
-                      <LogOut className="w-3 h-3" />
+                  <th className="px-4 py-3 font-bold text-rose-600 uppercase tracking-wider text-[10px] w-1/3">
+                    <span className="flex items-center gap-1.5">
+                      <LogOut className="w-3.5 h-3.5 text-rose-500" />
                       Check-Out Session
                     </span>
                   </th>
@@ -335,15 +646,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((row) => (
-                  <tr key={row.key} className="hover:bg-slate-50 transition-colors">
+                  <tr key={row.key} className="hover:bg-orange-50/30 transition-colors">
                     {/* Column 1: Employee details */}
-                    <td className="px-3 py-3 align-top">
-                      <p className="font-bold text-slate-900 text-xs">{row.employeeName}</p>
+                    <td className="px-4 py-3.5 align-top">
+                      <p className="font-extrabold text-slate-900 text-xs">{row.employeeName}</p>
                       {row.employeePhone && (
-                        <p className="text-[11px] text-slate-700 font-mono mt-0.5">📞 {row.employeePhone}</p>
+                        <p className="text-[11px] text-slate-600 font-mono mt-0.5">📞 {row.employeePhone}</p>
                       )}
                       {(row.employeeEmail || (row.checkIn as any)?.email) && (
-                        <p className="text-[11px] text-amber-700 font-medium truncate mt-0.5">
+                        <p className="text-[11px] text-orange-600 font-medium truncate mt-0.5">
                           ✉️ {row.employeeEmail || (row.checkIn as any)?.email}
                         </p>
                       )}

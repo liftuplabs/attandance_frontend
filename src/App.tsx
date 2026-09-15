@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, User, LogOut, Compass } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord } from './types';
 import { AuthModal } from './components/AuthModal';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
@@ -7,8 +7,15 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { BACKEND_API_URL } from './lib/api';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<'employee' | 'admin'>('employee');
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    try {
+      const stored = localStorage.getItem('attendance_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [offices, setOffices] = useState<OfficeLocation[]>([]);
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -47,18 +54,27 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
-      setActiveTab(currentUser.role === 'admin' ? 'admin' : 'employee');
       fetchAttendanceHistory();
     }
   }, [currentUser]);
 
   const handleLoginSuccess = (profile: UserProfile) => {
     setCurrentUser(profile);
+    try {
+      localStorage.setItem('attendance_user', JSON.stringify(profile));
+    } catch (err) {
+      console.warn('Failed to save session to localStorage:', err);
+    }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setHistory([]);
+    try {
+      localStorage.removeItem('attendance_user');
+    } catch (err) {
+      console.warn('Failed to remove session from localStorage:', err);
+    }
   };
 
   const handleOfficeAdded = (newOffice: OfficeLocation) => {
@@ -74,60 +90,50 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-between selection:bg-orange-500 selection:text-white">
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-orange-200 shadow-sm bg-header-wave">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col justify-between selection:bg-orange-500 selection:text-white py-3">
+      {/* Floating Pill Navigation Bar */}
+      <header className="sticky top-3 z-40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="floating-nav px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           {/* Logo Branding */}
           <div className="flex items-center gap-3">
             <img
               src="/assets/Liftup-Logo.png"
               alt="LiftupLabs Logo"
-              className="h-10 w-auto object-contain"
+              className="h-9 sm:h-10 w-auto object-contain hover:scale-105 transition-transform"
             />
           </div>
 
           {/* User Profile & Navigation Controls */}
           {currentUser && (
-            <div className="flex items-center gap-3">
-              {/* Admin Badge for Admin Users */}
-              {currentUser.role === 'admin' && (
-                <div className="flex items-center px-2 py-1 text-slate-900 text-xs font-extrabold gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-orange-600" />
-                  <span>Admin Console</span>
-                </div>
-              )}
-
-              {/* User Avatar Badge (No container background or border) */}
-              <div className="hidden md:flex items-center gap-2.5 px-1 py-1">
-                <div className="w-7 h-7 rounded-lg bg-orange-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+            <div className="flex items-center gap-2 sm:gap-4">
+              {/* User Avatar Badge */}
+              <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white/90 border border-slate-200/80 shadow-sm">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 text-white flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
                   {currentUser.full_name.charAt(0)}
                 </div>
-                <div className="text-left">
+                <div className="text-left hidden md:block">
                   <span className="text-xs font-bold text-slate-900 block leading-tight">
                     {currentUser.full_name}
                   </span>
-                  <span className="text-[10px] text-slate-800 capitalize font-bold">
-                    {currentUser.role} • {currentUser.phone || currentUser.email}
+                  <span className="text-[10px] text-orange-600 capitalize font-bold">
+                    {currentUser.role}
                   </span>
                 </div>
+                <button
+                  onClick={handleLogout}
+                  title="Logout"
+                  className="ml-1 p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-all cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
               </div>
-
-              {/* Logout Exit Button (Transparent background) */}
-              <button
-                onClick={handleLogout}
-                title="Logout"
-                className="p-2 text-slate-800 hover:text-rose-600 transition-colors"
-              >
-                <LogOut className="w-4.5 h-4.5" />
-              </button>
             </div>
           )}
         </div>
       </header>
 
       {/* Main Content Viewport */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
         {!currentUser ? (
           <AuthModal onLoginSuccess={handleLoginSuccess} />
         ) : currentUser.role === 'admin' ? (
@@ -151,10 +157,13 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>LiftupLabs Attendance Platform • Built with React, TS, Hono & Supabase</span>
-          <span className="text-[11px] text-orange-500 font-mono">Server Haversine Validation Active</span>
+      <footer className="py-4 text-center text-xs text-slate-500 max-w-7xl mx-auto px-4 w-full">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-3 rounded-full bg-white/60 backdrop-blur-md border border-slate-200/60 shadow-sm">
+          <span className="font-medium text-slate-600">LiftUp Labs Attendance Platform</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span className="text-[11px] font-mono text-orange-600 font-semibold">Haversine GPS Engine Active</span>
+          </div>
         </div>
       </footer>
     </div>
