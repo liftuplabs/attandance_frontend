@@ -13,6 +13,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Suppress harmless third-party browser extension message port errors in production & dev
+      window.addEventListener('unhandledrejection', function (event) {
+        var msg = (event && event.reason && event.reason.message) || String(event && event.reason || '');
+        if (
+          msg.indexOf('message channel closed before a response was received') !== -1 ||
+          msg.indexOf('A listener indicated an asynchronous response') !== -1
+        ) {
+          event.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body class="bg-gradient-to-br from-orange-100 via-white to-orange-50 text-slate-900 antialiased selection:bg-orange-500 selection:text-white min-h-screen">
     <div id="root"></div>
