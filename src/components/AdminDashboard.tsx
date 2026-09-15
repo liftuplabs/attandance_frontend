@@ -17,6 +17,7 @@ import {
   MapPin,
   ExternalLink,
   Clock,
+  Building2,
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord } from '../types';
 import { OfficeManager } from './OfficeManager';
@@ -56,6 +57,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [companyRequests, setCompanyRequests] = useState<any[]>([]);
+  const [reviewingCompanyId, setReviewingCompanyId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -69,8 +72,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch {}
   };
 
+  const fetchCompanyRequests = async () => {
+    try {
+      const res = await fetch(`${BACKEND_API_URL}/api/onboarding/requests`);
+      const data = await res.json();
+      if (res.ok && data.requests) setCompanyRequests(data.requests);
+    } catch {}
+  };
+
   React.useEffect(() => {
     fetchEmployees();
+    fetchCompanyRequests();
   }, []);
 
   // ── Pending On Duty Requests ──────────────────────────────────────────────
@@ -109,6 +121,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setReviewingId(null);
     }
   };
+
+  const handleReviewCompany = async (requestId: string, action: 'approve' | 'reject') => {
+    setReviewingCompanyId(requestId);
+    setActionMessage(null);
+    try {
+      const res = await fetch(`${BACKEND_API_URL}/api/onboarding/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: requestId, action }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage({
+          type: 'success',
+          text: data.message || `Company request ${action}d successfully!`,
+        });
+        fetchCompanyRequests();
+        fetchEmployees();
+        onRefreshData();
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: data.error || 'Failed to review request.',
+        });
+      }
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: `Network error: ${err.message}`,
+      });
+    } finally {
+      setReviewingCompanyId(null);
+    }
+  };
+
+  const pendingCompanyCount = useMemo(() => {
+    return companyRequests.filter((r) => r.status === 'pending').length;
+  }, [companyRequests]);
 
   // ── KPI Metrics ────────────────────────────────────────────────────────────
   const totalCount = history.length;
@@ -312,8 +362,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onClick={() => {
             onRefreshData();
             fetchEmployees();
+            fetchCompanyRequests();
           }}
-          className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 text-xs font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all active:scale-95"
+          className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 text-xs font-bold flex items-center gap-2 shadow-sm hover:shadow transition-all active:scale-95 cursor-pointer"
         >
           <RotateCw className="w-3.5 h-3.5 text-orange-500" />
           <span>Sync Data</span>
@@ -540,6 +591,163 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <span>Reject</span>
                     </button>
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Company Onboarding Requests Review Queue ── */}
+      <div className="glass-panel p-6 border-2 border-orange-400/40 relative overflow-hidden shadow-lg shadow-orange-500/5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center font-extrabold shadow-md shadow-orange-500/20">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                Company Onboarding Requests
+                {pendingCompanyCount > 0 ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-500 text-white animate-pulse">
+                    {pendingCompanyCount} Pending
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                    0 Pending
+                  </span>
+                )}
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Review and approve organizations requesting their own dedicated company admin accounts
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {companyRequests.length === 0 ? (
+          <div className="p-8 rounded-2xl bg-white/50 border border-dashed border-slate-200 text-center text-xs text-slate-400">
+            🏢 No company registration requests received yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {companyRequests.map((req) => {
+              const isPending = req.status === 'pending';
+              const isApproved = req.status === 'approved';
+              const isRejected = req.status === 'rejected';
+
+              return (
+                <div
+                  key={req.id}
+                  className={`glass-panel-interactive p-5 rounded-2xl border flex flex-col justify-between gap-4 ${
+                    isApproved
+                      ? 'border-emerald-200 bg-emerald-50/20'
+                      : isRejected
+                      ? 'border-rose-200 bg-rose-50/20 opacity-75'
+                      : 'border-orange-300/80 bg-white/90 shadow-md'
+                  }`}
+                >
+                  <div>
+                    {/* Header: Company Name + Status Badge */}
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs shrink-0">
+                          {req.company_name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 leading-tight">
+                            {req.company_name}
+                          </h4>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {req.industry} • {req.company_size}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
+                          isApproved
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : isRejected
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-amber-100 text-amber-800 border-amber-300 animate-pulse'
+                        }`}
+                      >
+                        {isApproved ? '✓ Approved' : isRejected ? '✕ Rejected' : '⏳ Pending Approval'}
+                      </span>
+                    </div>
+
+                    {/* Admin Contact Details */}
+                    <div className="my-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1 text-xs">
+                      <div className="flex items-center justify-between text-slate-700 font-bold">
+                        <span>Admin: {req.admin_name}</span>
+                        {req.admin_phone && (
+                          <span className="text-[11px] text-slate-500 font-mono">
+                            📞 {req.admin_phone}
+                          </span>
+                        )}
+                      </div>
+                      {req.admin_email && (
+                        <p className="text-[11px] text-orange-600 font-medium">
+                          ✉️ {req.admin_email}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Primary Office Geofence */}
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-700 space-y-1">
+                      <div className="flex items-center justify-between font-bold">
+                        <span>Office: {req.office_name} ({req.office_radius}m radius)</span>
+                        <a
+                          href={`https://www.google.com/maps?q=${req.office_lat},${req.office_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-orange-600 font-bold hover:underline"
+                        >
+                          <MapPin className="w-2.5 h-2.5 text-orange-600" />
+                          <span>Google Maps</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        GPS: {req.office_lat}, {req.office_lng}
+                      </p>
+                    </div>
+
+                    {req.remarks && (
+                      <p className="mt-2 text-[11px] text-slate-600 italic bg-amber-50/50 p-2 rounded-lg border border-amber-200/40">
+                        "{req.remarks}"
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Actions for Pending Requests */}
+                  {isPending && (
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        disabled={reviewingCompanyId === req.id}
+                        onClick={() => handleReviewCompany(req.id, 'approve')}
+                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                      >
+                        {reviewingCompanyId === req.id ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Approve & Provision Admin</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        disabled={reviewingCompanyId === req.id}
+                        onClick={() => handleReviewCompany(req.id, 'reject')}
+                        className="py-2 px-3 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Reject</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Mail, Phone, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw, Lock, KeyRound } from 'lucide-react';
+import { Mail, Phone, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff, RotateCcw, Lock, KeyRound, Building2 } from 'lucide-react';
 import { BACKEND_API_URL } from '../lib/api';
 import { UserProfile } from '../types';
+import { CompanyOnboardingModal } from './CompanyOnboardingModal';
 
 type Step =
   | 'login'        // combined email/phone + password on same page
@@ -29,6 +30,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [info, setInfo]             = useState<string | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const formattedId = authMethod === 'email'
     ? identifier.trim().toLowerCase()
@@ -305,15 +307,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               )}
             </button>
 
-            {/* Alternative: OTP Sign In */}
-            <div className="pt-2 text-center border-t border-slate-200/60">
+            {/* Alternative: OTP Sign In & Company Onboarding */}
+            <div className="pt-2 text-center border-t border-slate-200/60 space-y-2.5">
               <button
                 type="button"
                 onClick={handleSendOtpLogin}
-                className="text-xs text-slate-500 hover:text-slate-800 font-medium underline"
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium underline block mx-auto cursor-pointer"
               >
                 Sign in using OTP instead
               </button>
+
+              <div className="pt-2 border-t border-slate-200/50">
+                <p className="text-[11px] text-slate-500 mb-1">
+                  Want to use LiftUp Labs for your organization?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowOnboarding(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100/80 border border-orange-200/80 text-orange-700 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Register Company & Request Admin Access</span>
+                </button>
+              </div>
             </div>
           </form>
         )}
@@ -458,6 +474,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           </div>
         )}
       </div>
+
+      {/* Company Onboarding Registration Modal */}
+      <CompanyOnboardingModal
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+      />
     </div>
   );
 };
