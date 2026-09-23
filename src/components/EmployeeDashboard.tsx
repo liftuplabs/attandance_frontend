@@ -16,6 +16,7 @@ import {
   Briefcase,
   Send,
   Moon,
+  Settings2,
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord, GeoCoordinates } from '../types';
 import { CameraCapture } from './CameraCapture';
@@ -316,6 +317,32 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     }
   };
 
+  const handleCancelPendingOd = async (recordId: string) => {
+    if (!confirm('Are you sure you want to withdraw this pending On Duty request?')) return;
+    setLoadingAction(true);
+    try {
+      const res = await fetch(`${BACKEND_API_URL}/api/attendance/cancel-od`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: recordId }),
+      });
+      if (res.ok) {
+        setFeedbackMsg({
+          type: 'success',
+          text: 'Pending On Duty request withdrawn successfully.',
+        });
+        onAttendanceUpdated();
+      }
+    } catch (err: any) {
+      setFeedbackMsg({
+        type: 'error',
+        text: `Failed to withdraw request: ${err.message}`,
+      });
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
   // ── Pair employee records into structured session rows ────────────────────
   const sessionRows = useMemo<EmployeeSessionRow[]>(() => {
     const userRecs = history.filter((r) => r.user_id === user.id);
@@ -414,7 +441,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                 className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-2"
               >
                 {offices.map((office) => (
-                  <option key={office.id} value={office.id}>
+                  <option key={office.id} value={office.id} className="text-slate-900">
                     {office.name} ({office.radius_meters}m)
                   </option>
                 ))}
@@ -423,130 +450,147 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
           </div>
         </div>
 
-        {/* Circular Interactive Geofence Radar Beacon */}
-        <div className="relative my-6 flex flex-col items-center justify-center">
-          {/* Outer Ripple Rings */}
-          <div className="relative w-52 h-52 sm:w-60 sm:h-60 flex items-center justify-center">
-            {/* Outer Animated Pulse Ring */}
+        {/* Dynamic Satellite Radar Telemetry Card */}
+        <div
+          className={`p-6 sm:p-8 rounded-3xl border-2 transition-all relative overflow-hidden ${
+            isInRange
+              ? 'bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-500/10 border-amber-400 shadow-xl shadow-amber-500/5'
+              : 'bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-rose-500/10 border-rose-300 shadow-xl shadow-rose-500/5'
+          }`}
+        >
+          {/* Pulsing Concentric Radar Rings */}
+          <div className="absolute right-[-40px] top-[-40px] w-64 h-64 pointer-events-none opacity-30">
             <div
-              className={`absolute inset-0 rounded-full border-2 animate-radar ${
-                isInRange
-                  ? 'border-emerald-400/40 bg-emerald-500/5'
-                  : 'border-amber-400/40 bg-amber-500/5'
+              className={`w-full h-full rounded-full border-2 animate-ping ${
+                isInRange ? 'border-amber-500' : 'border-rose-500'
               }`}
             />
-            {/* Middle Static Ring */}
-            <div
-              className={`absolute inset-5 rounded-full border border-dashed ${
-                isInRange ? 'border-emerald-300/60' : 'border-amber-300/60'
-              }`}
-            />
-            {/* Inner Ring */}
-            <div
-              className={`absolute inset-10 rounded-full border ${
-                isInRange ? 'border-emerald-200/80' : 'border-amber-200/80'
-              }`}
-            />
+          </div>
 
-            {/* Central Glowing Radar Core */}
-            <div
-              className={`relative z-10 w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center p-3 shadow-xl backdrop-blur-md transition-all duration-500 ${
-                isInRange
-                  ? 'bg-gradient-to-br from-emerald-500/15 via-white to-emerald-500/20 border-2 border-emerald-400/80 shadow-emerald-500/10'
-                  : 'bg-gradient-to-br from-amber-500/15 via-white to-orange-500/20 border-2 border-amber-400/80 shadow-amber-500/10'
-              }`}
-            >
-              <div className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <Navigation className={`w-3.5 h-3.5 ${isInRange ? 'text-emerald-600' : 'text-amber-600'}`} />
-                <span>Distance</span>
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-white/90 shadow-sm">
+                {isInRange ? (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-emerald-700">Inside Office Perimeter</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
+                    <span className="text-rose-700">Outside Office Perimeter</span>
+                  </>
+                )}
               </div>
-              <div className="my-0.5">
-                <span
-                  className={`text-3xl sm:text-4xl font-black tracking-tight ${
-                    isInRange ? 'text-emerald-600' : 'text-rose-600'
-                  }`}
-                >
+
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">
                   {currentDistance}
                 </span>
-                <span className="text-xs font-bold text-slate-400 ml-1">m</span>
+                <span className="text-sm sm:text-base font-extrabold text-slate-500">
+                  meters away
+                </span>
               </div>
-              <span className="text-[10px] text-slate-500 font-medium">
-                Max: {activeOffice?.radius_meters}m
-              </span>
-            </div>
-          </div>
 
-          {/* Organic Status Pill */}
-          <div className="mt-4">
-            <div
-              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold shadow-sm transition-all ${
-                isInRange
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300/80'
-                  : 'bg-rose-50 text-rose-700 border border-rose-300/80'
-              }`}
-            >
-              {isInRange ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Within Perimeter ({activeOffice?.name})</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  <span>Outside Geofence Perimeter</span>
-                </>
-              )}
+              <p className="text-xs text-slate-600 max-w-sm">
+                {isInRange
+                  ? `You are inside the permitted radius of ${activeOffice?.radius_meters || 150}m. Ready to log daily attendance.`
+                  : `Distance exceeds allowed radius (${activeOffice?.radius_meters || 150}m). If on field duty, submit an On Duty request.`}
+              </p>
+            </div>
+
+            {/* GPS Telemetry Pill Pod */}
+            <div className="bg-white/85 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col gap-2 min-w-[200px]">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                  GPS Signal
+                </span>
+                <span className="text-emerald-600 font-bold flex items-center gap-1 text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> High Precision
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-100 pt-2 font-mono">
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase">Latitude</p>
+                  <p className="font-bold text-slate-800 text-[11px] truncate">
+                    {currentLat.toFixed(4)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase">Longitude</p>
+                  <p className="font-bold text-slate-800 text-[11px] truncate">
+                    {currentLng.toFixed(4)}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* GPS Telemetry Pill Bar */}
-        <div className="mt-4 pt-4 border-t border-slate-200/70 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100/90 border border-slate-200/80 text-[11px] font-mono text-slate-700">
-              <span className="text-amber-600 font-bold">GPS:</span>
-              <span>{currentLat.toFixed(5)}, {currentLng.toFixed(5)}</span>
-            </div>
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50/80 border border-emerald-200/80 text-[11px] text-emerald-800 font-semibold">
-              <span>±{currentAccuracy}m accuracy</span>
-            </div>
+        {gpsError && (
+          <div className="mt-4 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+            <span>{gpsError}</span>
           </div>
+        )}
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isCheckedIn ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-              }`}
-            />
-            <span>{isCheckedIn ? 'Currently Checked In' : 'Currently Checked Out'}</span>
-          </div>
+        {/* GPS Testing Simulation Toggle Bar */}
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setIsSimulatingGps(!isSimulatingGps)}
+            className="text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <Settings2 className="w-3.5 h-3.5 text-amber-500" />
+            <span>{isSimulatingGps ? 'Hide GPS Override Controls' : 'Developer GPS Simulator'}</span>
+          </button>
+          {isSimulatingGps && (
+            <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+              GPS Mock Active
+            </span>
+          )}
         </div>
 
-        {/* GPS Dev Simulation Toggle */}
-        {import.meta.env.DEV && (
-          <div className="mt-3 pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => setIsSimulatingGps(!isSimulatingGps)}
-              className="text-slate-400 hover:text-amber-600 flex items-center gap-1.5 transition-colors text-[11px]"
-            >
-              <Sliders className="w-3 h-3 text-amber-500" />
-              <span>{isSimulatingGps ? 'Hide Developer GPS Controls' : 'Developer GPS Controls'}</span>
-            </button>
+        {isSimulatingGps && (
+          <div className="mt-3 p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/70 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Simulated Latitude
+                </label>
+                <input
+                  type="text"
+                  value={simLat}
+                  onChange={(e) => setSimLat(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                  placeholder="e.g. 18.5204"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                  Simulated Longitude
+                </label>
+                <input
+                  type="text"
+                  value={simLng}
+                  onChange={(e) => setSimLng(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono"
+                  placeholder="e.g. 73.8567"
+                />
+              </div>
+            </div>
 
-            {isSimulatingGps && (
-              <div className="flex items-center gap-2">
+            {activeOffice && (
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    if (activeOffice) {
-                      setSimLat(activeOffice.lat.toString());
-                      setSimLng(activeOffice.lng.toString());
-                    }
+                    setSimLat(activeOffice.lat.toString());
+                    setSimLng(activeOffice.lng.toString());
                   }}
-                  className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] font-semibold hover:bg-emerald-100 transition-colors"
+                  className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 rounded-lg text-[10px] font-semibold hover:bg-slate-100 transition-colors"
                 >
-                  Set Inside (0m)
+                  Snap Inside Office (0m)
                 </button>
                 <button
                   type="button"
@@ -603,7 +647,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
             </div>
             <button
               onClick={() => setShowCamera(true)}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shadow-sm"
+              className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
             >
               Retake
             </button>
@@ -611,7 +655,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         ) : (
           <button
             onClick={() => setShowCamera(true)}
-            className="w-full py-4 mb-5 rounded-2xl border-2 border-dashed border-amber-300/80 hover:border-amber-400 bg-amber-50/30 hover:bg-amber-50/70 text-slate-700 text-xs font-bold flex items-center justify-center gap-2.5 transition-all group shadow-sm"
+            className="w-full py-4 mb-5 rounded-2xl border-2 border-dashed border-amber-300/80 hover:border-amber-400 bg-amber-50/30 hover:bg-amber-50/70 text-slate-700 text-xs font-bold flex items-center justify-center gap-2.5 transition-all group shadow-sm cursor-pointer"
           >
             <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Camera className="w-4 h-4" />
@@ -641,20 +685,30 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         )}
 
         {/* Pending OD Approval Banner */}
-        {isPendingApproval && (
-          <div className="mb-5 p-4 rounded-2xl bg-amber-500/10 border border-amber-400/80 text-amber-950 flex items-start gap-3 shadow-sm">
-            <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-spin" />
-            <div className="flex-1 min-w-0 text-xs">
-              <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                On Duty Request Pending Verification
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
-                  Awaiting Admin
-                </span>
-              </h4>
-              <p className="text-slate-600 mt-0.5">
-                Your OD Check-In has been recorded and submitted to Admin for approval. You can continue your day and submit your Check-Out when your shift concludes.
-              </p>
+        {isPendingApproval && lastPunch && (
+          <div className="mb-5 p-4 rounded-2xl bg-amber-500/10 border border-amber-400/80 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-spin" />
+              <div className="text-xs">
+                <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                  On Duty Request Pending Verification
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                    Awaiting Admin
+                  </span>
+                </h4>
+                <p className="text-slate-600 mt-0.5">
+                  Your OD Check-In has been recorded and submitted to Admin for approval. You can continue your day and submit your Check-Out when your shift concludes.
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              disabled={loadingAction}
+              onClick={() => handleCancelPendingOd(lastPunch.id)}
+              className="px-3 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl transition-all shadow-sm shrink-0 self-end sm:self-center cursor-pointer"
+            >
+              Withdraw Request
+            </button>
           </div>
         )}
 

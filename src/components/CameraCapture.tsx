@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Camera, RefreshCw, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
+import { Camera, RefreshCw, CheckCircle, AlertCircle, Sparkles, X } from 'lucide-react';
 
 interface CameraCaptureProps {
   onCapture: (blob: Blob, dataUrl: string) => void;
@@ -101,8 +101,15 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
   };
 
   const handleConfirm = () => {
-    if (capturedBlob && capturedDataUrl) {
-      onCapture(capturedBlob, capturedDataUrl);
+    if (capturedDataUrl) {
+      if (capturedBlob) {
+        onCapture(capturedBlob, capturedDataUrl);
+      } else {
+        fetch(capturedDataUrl)
+          .then((r) => r.blob())
+          .then((b) => onCapture(b, capturedDataUrl))
+          .catch(() => onCapture(new Blob(), capturedDataUrl));
+      }
     }
   };
 
@@ -121,12 +128,24 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
             <p className="text-xs text-slate-500">Capture clear face snapshot for punch</p>
           </div>
         </div>
-        {stream && !capturedDataUrl && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Camera Active
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {stream && !capturedDataUrl && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Camera Active
+            </span>
+          )}
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors"
+              title="Close Camera"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main Video Viewport or Captured Frame */}

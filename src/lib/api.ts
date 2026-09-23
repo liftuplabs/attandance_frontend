@@ -5,7 +5,13 @@
  */
 
 export const BACKEND_API_URL =
-  import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  import.meta.env.VITE_BACKEND_URL ||
+  (typeof window !== 'undefined' &&
+  window.location.hostname &&
+  window.location.hostname !== 'localhost' &&
+  window.location.hostname !== '127.0.0.1'
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : 'http://localhost:5000');
 
 /**
  * Upload selfie photo blob to backend Cloudinary service.
