@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Clock,
   Building2,
+  Moon,
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord } from '../types';
 import { OfficeManager } from './OfficeManager';
@@ -239,12 +240,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
 
   const StatusBadge = ({ rec }: { rec: AttendanceRecord }) => {
+    if (rec.is_auto_logout) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-full">
+          <Moon className="w-3 h-3 text-amber-700" />
+          Auto Cutoff
+        </span>
+      );
+    }
     if (rec.status === 'valid') {
       const isOd = rec.is_on_duty || rec.check_type.startsWith('on_duty');
       return (
         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
           <CheckCircle2 className="w-3 h-3" />
-          {isOd ? 'OD Approved' : 'Valid'}
+          {isOd ? 'OD Approved' : 'Manual Verified'}
         </span>
       );
     }
@@ -288,13 +297,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex items-start gap-2">
           {type === 'in' ? (
             <LogIn className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+          ) : rec.is_auto_logout ? (
+            <Moon className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
           ) : (
             <LogOut className="w-3.5 h-3.5 text-rose-400 mt-0.5 shrink-0" />
           )}
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-slate-900">{fmt(rec.created_at)}</p>
             <p className="text-[10px] text-slate-500">
-              {office} • {rec.distance_meters}m
+              {rec.is_auto_logout ? 'System Auto Cutoff' : `${office} • ${rec.distance_meters}m`}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <StatusBadge rec={rec} />
@@ -712,6 +723,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <p className="text-[10px] text-slate-500 font-mono">
                         GPS: {req.office_lat}, {req.office_lng}
                       </p>
+                    </div>
+
+                    {/* Auto-Logout Cutoff Information */}
+                    <div className="mt-2 flex items-center justify-between text-[11px] p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-amber-900 font-medium">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <Moon className="w-3.5 h-3.5 text-amber-700" />
+                        Auto Cutoff Time:
+                      </span>
+                      <span className="font-bold font-mono text-amber-950 bg-white px-2 py-0.5 rounded-md border border-amber-200 shadow-2xs">
+                        {req.auto_logout_time || '23:59'} ({req.enable_auto_logout !== false ? 'Enabled' : 'Disabled'})
+                      </span>
                     </div>
 
                     {req.remarks && (

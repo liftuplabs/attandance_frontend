@@ -15,6 +15,7 @@ import {
   Clock,
   Briefcase,
   Send,
+  Moon,
 } from 'lucide-react';
 import { UserProfile, OfficeLocation, AttendanceRecord, GeoCoordinates } from '../types';
 import { CameraCapture } from './CameraCapture';
@@ -71,16 +72,34 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
 
   const activeOffice = offices.find((o) => o.id === selectedOfficeId) || offices[0];
 
-  const todayISTStr = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
-    .toISOString()
-    .split('T')[0];
+  const getISTDateStr = (d: Date = new Date()) => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  };
+  const todayISTStr = getISTDateStr(new Date());
 
-  const todaysPunches = history.filter(
-    (h) => h.created_at.startsWith(todayISTStr) && h.user_id === user.id
-  );
-  const lastPunch = todaysPunches[0];
+  // Filter punches for today (in IST)
+  const todaysPunches = useMemo(() => {
+    return history
+      .filter((h) => {
+        if (h.user_id !== user.id) return false;
+        try {
+          return getISTDateStr(new Date(h.created_at)) === todayISTStr;
+        } catch {
+          return h.created_at.startsWith(todayISTStr);
+        }
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [history, user.id, todayISTStr]);
+
+  // Active (non-rejected) punches for state tracking
+  const activeTodaysPunches = useMemo(() => {
+    return todaysPunches.filter((h) => h.status !== 'rejected');
+  }, [todaysPunches]);
+
+  const lastPunch = activeTodaysPunches[0];
 
   const isCheckedIn = lastPunch?.check_type === 'in' || lastPunch?.check_type === 'on_duty_in';
+  const isPendingApproval = lastPunch?.status === 'pending_approval';
   const canPunchIn = !isCheckedIn;
   const canPunchOut = isCheckedIn;
 
@@ -227,13 +246,20 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
   };
 
   const handleRequestOnDuty = async (checkType: 'in' | 'out') => {
-    if (!capturedBlob && !capturedDataUrl) {
-      setShowCamera(true);
+    if (!onDutyRemarks.trim()) {
+      setFeedbackMsg({
+        type: 'error',
+        text: 'Please enter your On Duty purpose / client name / reason before submitting.',
+      });
       return;
     }
 
-    if (!onDutyRemarks.trim()) {
-      alert('Please enter your On Duty purpose / client name / reason.');
+    if (!capturedBlob && !capturedDataUrl) {
+      setShowCamera(true);
+      setFeedbackMsg({
+        type: 'warning',
+        text: 'Selfie photo is required for On Duty verification. Opening camera...',
+      });
       return;
     }
 
@@ -272,6 +298,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
         setCapturedBlob(null);
         setCapturedDataUrl(null);
         setOnDutyRemarks('');
+        setShowOnDutyMode(false);
         onAttendanceUpdated();
       } else {
         setFeedbackMsg({
@@ -613,6 +640,24 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
           </div>
         )}
 
+        {/* Pending OD Approval Banner */}
+        {isPendingApproval && (
+          <div className="mb-5 p-4 rounded-2xl bg-amber-500/10 border border-amber-400/80 text-amber-950 flex items-start gap-3 shadow-sm">
+            <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-spin" />
+            <div className="flex-1 min-w-0 text-xs">
+              <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                On Duty Request Pending Verification
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                  Awaiting Admin
+                </span>
+              </h4>
+              <p className="text-slate-600 mt-0.5">
+                Your OD Check-In has been recorded and submitted to Admin for approval. You can continue your day and submit your Check-Out when your shift concludes.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* On Duty (OD) Request Panel */}
         {(!isInRange || showOnDutyMode) && (
           <div className="mb-5 p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-500/10 border-2 border-amber-400/80 shadow-lg shadow-amber-500/5">
@@ -901,10 +946,15 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
 
                       {/* Status Badge & Remarks */}
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {row.checkOut.status === 'valid' ? (
+                        {row.checkOut.is_auto_logout ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                            <Moon className="w-2.5 h-2.5 text-amber-700" />
+                            Auto Cutoff (Forgot to Logout)
+                          </span>
+                        ) : row.checkOut.status === 'valid' ? (
                           <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                             <CheckCircle2 className="w-2.5 h-2.5" />
-                            {row.checkOut.is_on_duty || row.checkOut.check_type.startsWith('on_duty') ? 'OD Approved' : 'Verified'}
+                            {row.checkOut.is_on_duty || row.checkOut.check_type.startsWith('on_duty') ? 'OD Approved' : 'Verified (Manual Punch-Out)'}
                           </span>
                         ) : row.checkOut.status === 'pending_approval' ? (
                           <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full">
@@ -924,11 +974,16 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                         )}
                       </div>
 
-                      {row.checkOut.remarks && (
+                      {row.checkOut.is_auto_logout ? (
+                        <div className="mt-1.5 text-[10px] text-amber-900 bg-amber-50/90 border border-amber-200/80 rounded-lg p-1.5 flex items-center gap-1.5">
+                          <Moon className="w-3 h-3 text-amber-700 shrink-0" />
+                          <span>Auto-logged out at cutoff time ({formatTime(row.checkOut.created_at)}) because no manual punch-out was recorded.</span>
+                        </div>
+                      ) : row.checkOut.remarks ? (
                         <div className="mt-1.5 text-[10px] text-amber-900 bg-amber-50/70 border border-amber-200/60 rounded-lg p-1.5">
                           <span className="font-bold">OD Reason:</span> {row.checkOut.remarks}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <span className="text-amber-700 font-semibold text-[11px]">

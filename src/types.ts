@@ -38,6 +38,7 @@ export interface AttendanceRecord {
   remarks?: string;
   admin_notes?: string;
   is_on_duty?: boolean;
+  is_auto_logout?: boolean;
   approval_status?: 'pending' | 'approved' | 'rejected';
   profiles?: {
     full_name: string;

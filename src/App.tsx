@@ -55,6 +55,12 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       fetchAttendanceHistory();
+
+      // Auto-sync every 60s to check for midnight/cutoff auto-logout
+      const interval = setInterval(() => {
+        fetchAttendanceHistory();
+      }, 60000);
+      return () => clearInterval(interval);
     }
   }, [currentUser]);
 

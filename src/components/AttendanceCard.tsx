@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, LogOut, CheckCircle2, AlertTriangle, Eye, User, Clock } from 'lucide-react';
+import { LogIn, LogOut, CheckCircle2, AlertTriangle, Eye, User, Clock, Moon } from 'lucide-react';
 import { AttendanceRecord } from '../types';
 import { getSignedPhotoUrl } from '../lib/api';
 
@@ -12,7 +12,7 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ record }) => {
   const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
 
-  const isCheckIn = record.check_type === 'in';
+  const isCheckIn = record.check_type === 'in' || record.check_type === 'on_duty_in';
   const isValid = record.status === 'valid';
 
   const recordDate = new Date(record.created_at);
@@ -22,15 +22,11 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ record }) => {
     timeStyle: 'short',
   });
 
-  const todayISTStr = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
-    .toISOString()
-    .split('T')[0];
-  const recordDateISTStr = new Date(recordDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
-    .toISOString()
-    .split('T')[0];
+  const todayISTStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const recordDateISTStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(recordDate);
 
   const isPastDate = recordDateISTStr < todayISTStr;
-  const isIncompleteSession = isCheckIn && isPastDate;
+  const isIncompleteSession = isCheckIn && isPastDate && record.status !== 'rejected';
 
   const handleOpenLightbox = async () => {
     if (!record.photo_url) return;
@@ -53,10 +49,18 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ record }) => {
               className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold shadow-sm ${
                 isCheckIn
                   ? 'bg-amber-400 text-slate-950 shadow-amber-500/20'
+                  : record.is_auto_logout
+                  ? 'bg-amber-100 text-amber-800'
                   : 'bg-slate-200 text-slate-700'
               }`}
             >
-              {isCheckIn ? <LogIn className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
+              {isCheckIn ? (
+                <LogIn className="w-4 h-4" />
+              ) : record.is_auto_logout ? (
+                <Moon className="w-4 h-4 text-amber-700" />
+              ) : (
+                <LogOut className="w-4 h-4" />
+              )}
             </div>
             <div>
               <span className="text-xs font-black uppercase tracking-wider text-slate-800">
@@ -70,7 +74,9 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ record }) => {
           <div className="flex flex-col items-end gap-1">
             <div
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
-                record.status === 'valid'
+                record.is_auto_logout
+                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                  : record.status === 'valid'
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-300/80'
                   : record.status === 'pending_approval'
                   ? 'bg-amber-50 text-amber-800 border-amber-300/80'
@@ -79,10 +85,15 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ record }) => {
                   : 'bg-rose-50 text-rose-700 border-rose-300/80'
               }`}
             >
-              {record.status === 'valid' ? (
+              {record.is_auto_logout ? (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Auto Cutoff</span>
+                </>
+              ) : record.status === 'valid' ? (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{record.is_on_duty || record.check_type.startsWith('on_duty') ? 'OD Approved' : 'Verified'}</span>
+                  <span>{record.is_on_duty || record.check_type.startsWith('on_duty') ? 'OD Approved' : 'Verified (Manual)'}</span>
                 </>
               ) : record.status === 'pending_approval' ? (
                 <>
